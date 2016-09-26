@@ -25,6 +25,20 @@ alias WTPKT = uint;
 alias HCTX = void *;
 alias HMGR = void *;
 
+enum : ushort {
+    WT_PACKET = 0x7FF0,
+    WT_CTXOPEN,
+    WT_CTXCLOSE,
+    WT_CTXUPDATE,
+    WT_CTXOVERLAP,
+    WT_PROXIMITY,
+    WT_INFOCHANGE,
+    WT_CSRCHANGE,
+    WT_PACKETEXT,
+    WT_MAX,
+}
+
+
 struct AXIS {
     int axMin;
     int axMax;
@@ -220,6 +234,39 @@ struct ROTATION { /* 1.1 */
 	int roPitch;
 	int roRoll;
 	int roYaw;
+}
+
+/* relative buttons */
+enum {
+    TBN_NONE	= 0,
+    TBN_UP		=1,
+    TBN_DOWN	=2
+}
+
+/* DEVICE CONFIG CONSTANTS */
+enum {
+    WTDC_NONE		=0,
+    WTDC_CANCEL		=1,
+    WTDC_OK			=2,
+    WTDC_RESTART	=3,
+}
+
+struct PACKET {
+    HCTX        pkContext;
+    uint        pkStatus;
+    int         pkTime;
+    WTPKT       pkChanged;
+    uint        pkSerialNumber;
+    uint        pkCursor;
+    uint        pkButtons;
+    uint        pkX;
+    uint        pkY;
+    uint        pkZ;
+    uint        pkNormalPressure;
+    uint        pkTangentPressure;
+    ORIENTATION pkOrientation;
+
+    ROTATION    pkRotation;  /* 1.1 */
 }
 
 extern(Windows) @nogc nothrow {
