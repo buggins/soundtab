@@ -8,8 +8,25 @@ mixin APP_ENTRY_POINT;
 extern (C) int UIAppMain(string[] args) {
 
     import derelict.wintab.wintab;
+    //import core.sys.windows.windows;
     DerelictWintab.load();
 
+    if (!WTInfo(0, 0, null)) {
+        Log.e("WinTab services not available");
+        //return 1;
+    }
+    char[50] wname;
+    if (!WTInfo(WTI_DEVICES, DVC_NAME, cast(void*)wname.ptr)) {
+        Log.e("WinTab cannot get device name");
+        return 1;
+    }
+    if (wname[0 .. 5] != "WACOM") {
+        Log.e("Not a wacom device");
+        return 2;
+    }
+
+    AXIS[3] tpOri;
+	uint tilt_support = WTInfo(WTI_DEVICES, DVC_ORIENTATION, cast(void*)&tpOri);
     // load theme from file "theme_default.xml"
     //Platform.instance.uiTheme = "theme_default";
 
