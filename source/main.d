@@ -11,6 +11,14 @@ extern (C) int UIAppMain(string[] args) {
     //import core.sys.windows.windows;
     DerelictWintab.load();
 
+    uint res;
+
+    ushort thisVersion;
+    res = WTInfo(WTI_INTERFACE, IFC_SPECVERSION, &thisVersion);
+
+    LOGCONTEXT	glogContext;
+	uint wWTInfoRetVal = WTInfo(WTI_DEFSYSCTX, 0, &glogContext);
+
     if (!WTInfo(0, 0, null)) {
         Log.e("WinTab services not available");
         //return 1;
