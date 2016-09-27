@@ -12,6 +12,14 @@ class Tablet {
     @property bool isInitialized() { return _hCtx !is null; }
     /// initialize tablet API for window
     bool init(HWND hWnd) {
+
+        try {
+            DerelictWintab.load();
+        } catch (Exception e) {
+            Log.e("Cannot load wintab32.dll");
+            return false;
+        }
+
         uint res;
 
         _hWnd = hWnd;

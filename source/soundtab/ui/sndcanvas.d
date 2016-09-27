@@ -11,6 +11,8 @@ immutable double BASE_FREQUENCY = 440.0;
 
 /// Convert frequency to log scale, 0 = BASE_FREQUENCY (440hz), 1 = + half tone, 12 = + octave (880Hz), -12 = -octave (220hz)
 double toLogScale(double freq) {
+    if (freq < 8)
+        return -6 * 12;
     return log2(freq / BASE_FREQUENCY) * 12;
 }
 
@@ -32,6 +34,23 @@ int getNoteIndex(double note) {
 int getNearestNote(double note) {
     return cast(int)floor(note + 0.5);
 }
+
+int getNoteOctave(double note) {
+    int n = getNearestNote(note);
+    return ((n - 3) + 12*5) / 12;
+}
+
+immutable dstring[9] OCTAVE_NAMES = [
+    "0", "1", "2",  "3",  "4", "5",  "6", "7",  "8"
+];
+
+dstring getNoteOctaveName(double note) {
+    int oct = getNoteOctave(note);
+    if (oct < 0 || oct > 8)
+        return " ";
+    return OCTAVE_NAMES[oct];
+}
+
 
 // 0  1  2  3  4  5  6  7  8  9  10 11
 // A  A# B  C  C# D  D# E  F  F# G  G#
@@ -71,7 +90,7 @@ class SoundCanvas : Widget {
     double _minNote;
     double _maxNote;
 
-    double _currentPitch = 456;
+    double _currentPitch = 478;
 
     @property double minPitch() { return _minPitch; }
     @property double maxPitch() { return _maxPitch; }
@@ -169,6 +188,9 @@ class SoundCanvas : Widget {
                 dstring noteName = getNoteName(n);
                 Point sz = fnt.textSize(noteName);
                 fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2, noteName, 0xA0A0A0);
+                dstring octaveName = getNoteOctaveName(n);
+                sz = fnt.textSize(octaveName);
+                fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2 + fsize, octaveName, 0x80A0A0A0);
             }
             noteRect.right = noteRect.left + 1;
             buf.fillRect(noteRect, 0x808080);

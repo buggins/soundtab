@@ -413,6 +413,7 @@
    <Folder name="soundtab">
     <Folder name="ui">
      <File path="source\soundtab\ui\sndcanvas.d" />
+     <File path="source\soundtab\ui\synthwidget.d" />
     </Folder>
    </Folder>
    <Folder name="wintab">
