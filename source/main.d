@@ -9,9 +9,16 @@ import derelict.wintab.wintab;
 import core.sys.windows.windows;
 
 class Tablet {
-    HCTX _hCtx;
+    private HCTX _hCtx;
+    private LOGCONTEXT glogContext;
+    private HWND _hWnd;
+    /// returns true if initialized
+    @property bool isInitialized() { return _hCtx !is null; }
+    /// initialize tablet API for window
     bool init(HWND hWnd) {
         uint res;
+
+        _hWnd = hWnd;
 
         if (!WTInfo(0, 0, null)) {
             Log.e("WinTab services not available");
@@ -22,7 +29,6 @@ class Tablet {
         ushort thisVersion;
         res = WTInfo(WTI_INTERFACE, IFC_SPECVERSION, &thisVersion);
 
-        LOGCONTEXT	glogContext;
         glogContext.lcOptions |= CXO_SYSTEM;
         uint wWTInfoRetVal = WTInfo(WTI_DEFSYSCTX, 0, &glogContext);
         assert(glogContext.lcOptions & CXO_SYSTEM);
@@ -44,7 +50,7 @@ class Tablet {
         //Platform.instance.uiTheme = "theme_default";
 
         immutable uint PACKETDATA = PK_ALL; // (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE);
-        immutable uint PACKETMODE = PK_BUTTONS; // | PK_X | PK_Y | PK_Z;
+        immutable uint PACKETMODE = 0; //PK_BUTTONS; // | PK_X | PK_Y | PK_Z;
 
         // What data items we want to be included in the tablet packets
         glogContext.lcPktData = PACKETDATA;
@@ -110,20 +116,10 @@ class Tablet {
     }
     bool onUnknownWindowMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, ref LRESULT result) {
         import std.string : format;
-        PACKET pkt;
+        PACKET!PK_ALL pkt;
         switch(message) {
-            case WM_CREATE:
-                Log.d("WM_CREATE");
-                if (!init(hwnd)) {
-                    Log.e("Tablet init failed");
-                }
-                break;
-            case WM_DESTROY:
-                Log.d("WM_DESTROY");
-                uninit();
-                break;
             case WM_ACTIVATE:
-                Log.d("WM_ACTIVATE");
+                Log.d("WM_ACTIVATE ", wParam);
                 if (wParam)
                 {
                     //InvalidateRect(hwnd, NULL, TRUE);
@@ -171,7 +167,7 @@ class Tablet {
                     {
                         //MessageBeep(0);
                     }
-                    Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", pkt.pkButtons);
+                    Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", "%08x".format(pkt.pkButtons));
                     //ptOld = ptNew;
                     //prsOld = prsNew;
                     //
