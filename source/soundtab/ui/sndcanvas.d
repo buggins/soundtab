@@ -14,6 +14,7 @@ class SoundCanvas : Widget {
     double _maxNote;
 
     double _currentPitch = 478;
+    double _currentY = 0.5;
 
     @property double minPitch() { return _minPitch; }
     @property double maxPitch() { return _maxPitch; }
@@ -36,6 +37,7 @@ class SoundCanvas : Widget {
 
     void setPosition(double x, double y, double pressure) {
         _currentPitch = _minPitch + (_maxPitch - _minPitch) * x;
+        _currentY = y;
         invalidate();
     }
 
@@ -129,7 +131,9 @@ class SoundCanvas : Widget {
         double currentNote = toLogScale(_currentPitch);
         if (currentNote >= _minNote && currentNote <= _maxNote) {
             int x = getPitchX(rc, currentNote);
+            int y = cast(int)(rc.top + (rc.height * _currentY));
             buf.fillRect(Rect(x, rc.top, x+1, rc.bottom), 0xFF0000);
+            buf.fillRect(Rect(x - pixelsPerNote / 2, y, x + pixelsPerNote / 2, y + 1), 0xFF0000);
         }
     }
 

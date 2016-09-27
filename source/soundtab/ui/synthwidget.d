@@ -6,12 +6,14 @@ import dlangui.widgets.controls;
 import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.pitchwidget;
+import soundtab.ui.pressurewidget;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     SoundCanvas _soundCanvas;
     VerticalLayout _controlsLayout;
     Tablet _tablet;
     PitchWidget _pitchWidget;
+    PressureWidget _pressureWidget;
 
     ~this() {
         _tablet.uninit();
@@ -39,7 +41,11 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         _controlsh.addChild(new CheckBox("pitchCorrection", "Pitch correction"d));
 
+
         _controlsh.addChild(new HSpacer());
+
+        _pressureWidget = new PressureWidget();
+        _controlsh.addChild(_pressureWidget);
 
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
@@ -52,12 +58,16 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     void onPositionChange(double x, double y, double pressure, uint buttons) {
         _soundCanvas.setPosition(x, y, pressure);
         _pitchWidget.setPitch(_soundCanvas._currentPitch);
+        _pressureWidget.setPressure(pressure, _proximity);
         invalidate();
         window.update();
     }
 
     void onProximity(bool enter) {
         _proximity = enter;
+        _pressureWidget.setPressure(0, _proximity);
+        invalidate();
+        window.update();
     }
 
 }
