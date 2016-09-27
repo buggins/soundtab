@@ -35,9 +35,5 @@ extern (C) int UIAppMain(string[] args) {
     window.show();
 
     // run message loop
-    int res = Platform.instance.enterMessageLoop();
-
-    tablet.uninit();
-
-    return res;
+    return Platform.instance.enterMessageLoop();
 }

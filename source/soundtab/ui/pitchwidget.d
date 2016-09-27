@@ -52,5 +52,11 @@ class PitchWidget : Widget {
 
     }
 
+    void setPitch(double freq) {
+        _currentPitch = freq;
+        invalidate();
+    }
+
+
 }
 

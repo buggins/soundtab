@@ -7,14 +7,22 @@ import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.pitchwidget;
 
-class SynthWidget : VerticalLayout {
+class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     SoundCanvas _soundCanvas;
     VerticalLayout _controlsLayout;
     Tablet _tablet;
     PitchWidget _pitchWidget;
+
+    ~this() {
+        _tablet.uninit();
+    }
+
     this(Tablet tablet) {
         super("synth");
         _tablet = tablet;
+        _tablet.onProximity = this;
+        _tablet.onPosition = this;
+
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
         backgroundColor = 0xE0E8F0;
@@ -39,4 +47,17 @@ class SynthWidget : VerticalLayout {
         _soundCanvas = new SoundCanvas();
         addChild(_soundCanvas);
     }
+
+    bool _proximity = false;
+    void onPositionChange(double x, double y, double pressure, uint buttons) {
+        _soundCanvas.setPosition(x, y, pressure);
+        _pitchWidget.setPitch(_soundCanvas._currentPitch);
+        invalidate();
+        window.update();
+    }
+
+    void onProximity(bool enter) {
+        _proximity = enter;
+    }
+
 }

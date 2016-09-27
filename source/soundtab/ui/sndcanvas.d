@@ -34,6 +34,12 @@ class SoundCanvas : Widget {
         _maxPitch = fromLogScale(_maxNote);
     }
 
+    void setPosition(double x, double y, double pressure) {
+        _currentPitch = _minPitch + (_maxPitch - _minPitch) * x;
+        invalidate();
+    }
+
+
     this() {
         super("soundCanvas");
         layoutWidth = FILL_PARENT;

@@ -197,19 +197,23 @@ struct LOGCONTEXT {
         then the interface will cause the context to implic­itly capture all tablet events while the button is down. In this case, events occurring outside the context will be clipped to the context and processed as if they had occurred in the context. When the but­ton is released, 
         the context will receive the button release event, and then event processing will return to normal. */
 	uint	lcBtnUpMask;
-    /** Each specifies the origin of the context's input area in the tab­let's native coordinates, along the x, y, and z axes, respec­tively. Each will be clipped to the tablet native coordinate space when the context is opened or modified. */
+    /** Each specifies the origin of the context's input area in the tab­let's native coordinates, along the x, y, and z axes, respec­tively. 
+        Each will be clipped to the tablet native coordinate space when the context is opened or modified. */
 	int	lcInOrgX;
 	int	lcInOrgY;
 	int	lcInOrgZ;
-    /** Each specifies the extent of the context's input area in the tab­let's native coordinates, along the x, y, and z axes, respec­tively. Each will be clipped to the tablet native coordinate space when the context is opened or modified. */
+    /** Each specifies the extent of the context's input area in the tab­let's native coordinates, along the x, y, and z axes, respec­tively. 
+        Each will be clipped to the tablet native coordinate space when the context is opened or modified. */
 	int	lcInExtX;
 	int	lcInExtY;
 	int	lcInExtZ;
-    /** Each specifies the origin of the context's output area in con­text output coordinates, along the x, y, and z axes, respec­tively. Each is used in coordinate scaling for absolute mode only. */
+    /** Each specifies the origin of the context's output area in con­text output coordinates, along the x, y, and z axes, respec­tively. 
+        Each is used in coordinate scaling for absolute mode only. */
 	int	lcOutOrgX;
 	int	lcOutOrgY;
 	int	lcOutOrgZ;
-    /** Each specifies the extent of the context's output area in con­text output coordinates, along the x, y, and z axes, respec­tively. Each is used in coordinate scaling for absolute mode only. */
+    /** Each specifies the extent of the context's output area in con­text output coordinates, along the x, y, and z axes, respec­tively. 
+        Each is used in coordinate scaling for absolute mode only. */
 	int	lcOutExtX;
 	int	lcOutExtY;
 	int	lcOutExtZ;

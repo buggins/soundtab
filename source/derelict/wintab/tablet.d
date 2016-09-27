@@ -3,8 +3,20 @@ module derelict.wintab.tablet;
 import core.sys.windows.windows;
 import derelict.wintab.wintab;
 import dlangui.core.logger;
+import dlangui.core.signals;
+
+interface TabletPositionHandler {
+    void onPositionChange(double x, double y, double pressure, uint buttons);
+}
+
+interface TabletProximityHandler {
+    void onProximity(bool enter);
+}
 
 class Tablet {
+    Signal!TabletPositionHandler onPosition;
+    Signal!TabletProximityHandler onProximity;
+
     private HCTX _hCtx;
     private LOGCONTEXT glogContext;
     private HWND _hWnd;
@@ -89,19 +101,14 @@ class Tablet {
         glogContext.lcInExtX = TabletX.axMax;
         glogContext.lcInExtY = TabletY.axMax;
 
-        glogContext.lcInOrgX = 0;
-        glogContext.lcInOrgY = 0;
-        glogContext.lcInExtX = TabletX.axMax;
-        glogContext.lcInExtY = TabletY.axMax;
-
         // Guarantee the output coordinate space to be in screen coordinates.  
-        glogContext.lcOutOrgX = GetSystemMetrics( SM_XVIRTUALSCREEN );
-        glogContext.lcOutOrgY = GetSystemMetrics( SM_YVIRTUALSCREEN );
-        glogContext.lcOutExtX = GetSystemMetrics( SM_CXVIRTUALSCREEN ); //SM_CXSCREEN );
+        glogContext.lcOutOrgX = 0; //GetSystemMetrics( SM_XVIRTUALSCREEN );
+        glogContext.lcOutOrgY = 0; //GetSystemMetrics( SM_YVIRTUALSCREEN );
+        glogContext.lcOutExtX = 100000; //GetSystemMetrics( SM_CXVIRTUALSCREEN ); //SM_CXSCREEN );
 
         // In Wintab, the tablet origin is lower left.  Move origin to upper left
         // so that it coincides with screen origin.
-        glogContext.lcOutExtY = -GetSystemMetrics( SM_CYVIRTUALSCREEN );	//SM_CYSCREEN );
+        glogContext.lcOutExtY = -100000; //-GetSystemMetrics( SM_CYVIRTUALSCREEN );	//SM_CYSCREEN );
 
         // Leave the system origin and extents as received:
         // lcSysOrgX, lcSysOrgY, lcSysExtX, lcSysExtY
@@ -118,26 +125,50 @@ class Tablet {
             _hCtx = null;
         }
     }
+
+    void onActivate(bool activated) {
+        if (_hCtx) 
+        {
+            WTEnable(_hCtx, activated ? TRUE : FALSE);
+            if (_hCtx && activated)
+            {
+                WTOverlap(_hCtx, TRUE);
+            }
+        }
+    }
+
+    bool _proximity;
+    void handleProximity(bool enter) {
+        _proximity = enter;
+        if (onProximity.assigned)
+            onProximity(enter);
+    }
+
+    private double _lastx = -1;
+    private double _lasty = -1;
+    private double _lastpressure = -1;
+    private uint _lastbuttons = 0;
+    void onPacket(int x, int y, int press, uint buttons) {
+        double xx = x / 100000.0;
+        double yy = y / 100000.0;
+        double pressure = press / 1000.0;
+        if (xx != _lastx || yy != _lasty || pressure != _lastpressure || buttons != _lastbuttons) {
+            if (onPosition.assigned)
+                onPosition(xx, yy, pressure, buttons);
+            _lastx = xx;
+            _lasty = yy;
+            _lastpressure = pressure;
+            _lastbuttons = buttons;
+        }
+    }
+
     bool onUnknownWindowMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, ref LRESULT result) {
         import std.string : format;
         PACKET!PK_ALL pkt;
         switch(message) {
             case WM_ACTIVATE:
                 Log.d("WM_ACTIVATE ", wParam);
-                if (wParam)
-                {
-                    //InvalidateRect(hwnd, NULL, TRUE);
-                }
-
-                /* if switching in the middle, disable the region */
-                if (_hCtx) 
-                {
-                    WTEnable(_hCtx, wParam ? TRUE : FALSE);
-                    if (_hCtx && wParam)
-                    {
-                        WTOverlap(_hCtx, TRUE);
-                    }
-                }
+                onActivate(wParam != 0);
                 break;
             case WT_CTXOPEN:
                 Log.d("WT_CTXOPEN");
@@ -152,7 +183,8 @@ class Tablet {
                 Log.d("WT_CTXOVERLAP");
                 break;
             case WT_PROXIMITY:
-                Log.d("WT_PROXIMITY");
+                Log.d("WT_PROXIMITY ", lParam);
+                handleProximity((lParam & 0xFFFF) != 0);
                 break;
             case WT_INFOCHANGE:
                 Log.d("WT_INFOCHANGE");
@@ -172,6 +204,7 @@ class Tablet {
                         //MessageBeep(0);
                     }
                     Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", "%08x".format(pkt.pkButtons));
+                    onPacket(pkt.pkX, pkt.pkY, pkt.pkNormalPressure, pkt.pkButtons);
                     //ptOld = ptNew;
                     //prsOld = prsNew;
                     //
