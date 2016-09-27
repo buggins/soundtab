@@ -43,8 +43,8 @@ class Tablet {
         // load theme from file "theme_default.xml"
         //Platform.instance.uiTheme = "theme_default";
 
-        immutable uint PACKETDATA = (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE);
-        immutable uint PACKETMODE = PK_BUTTONS | PK_X | PK_Y | PK_Z;
+        immutable uint PACKETDATA = PK_ALL; // (PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE);
+        immutable uint PACKETMODE = PK_BUTTONS; // | PK_X | PK_Y | PK_Z;
 
         // What data items we want to be included in the tablet packets
         glogContext.lcPktData = PACKETDATA;
@@ -59,6 +59,8 @@ class Tablet {
         // supported by the Intuos Wintab.  Your context will always receive
         // packets, even if there has been no change in the data.
         glogContext.lcMoveMask = PACKETDATA;
+
+        glogContext.lcOptions = CXO_MESSAGES; // | CXO_PEN;
 
         // Which buttons events will be handled by this context.  lcBtnMask
         // is a bitfield with one bit per button.
@@ -162,13 +164,14 @@ class Tablet {
                 Log.d("WT_PACKETEXT");
                 break;
             case WT_PACKET:
-                Log.d("WT_PACKET");
+                //Log.d("WT_PACKET");
                 if (WTPacket(cast(HCTX)lParam, wParam, &pkt)) 
                 {
                     if (HIWORD(pkt.pkButtons)==TBN_DOWN) 
                     {
                         //MessageBeep(0);
                     }
+                    Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", pkt.pkButtons);
                     //ptOld = ptNew;
                     //prsOld = prsNew;
                     //
@@ -186,7 +189,7 @@ class Tablet {
                 }
                 break;
             default:
-                Log.d("UNKNOWN: ", "%x".format(message));
+                //Log.d("UNKNOWN: ", "%x".format(message));
                 break;
         }
         return false; // to call DefWindowProc
@@ -269,5 +272,9 @@ extern (C) int UIAppMain(string[] args) {
     window.show();
 
     // run message loop
-    return Platform.instance.enterMessageLoop();
+    int res = Platform.instance.enterMessageLoop();
+
+    tablet.uninit();
+
+    return res;
 }

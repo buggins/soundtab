@@ -146,6 +146,10 @@ enum : uint {
     PK_ROTATION				=0x2000,	/* rotation info; 1.1 */
 }
 
+immutable uint PK_ALL = PK_CONTEXT | PK_STATUS | PK_TIME | PK_CHANGED
+                    | PK_SERIAL_NUMBER | PK_CURSOR | PK_BUTTONS | PK_X | PK_Y | PK_Z 
+                    | PK_NORMAL_PRESSURE | PK_TANGENT_PRESSURE | PK_ORIENTATION | PK_ROTATION;
+
 enum LCNAMELEN = 40;
 struct LOGCONTEXT {
 	wchar[LCNAMELEN] lcName;
@@ -265,7 +269,6 @@ struct PACKET {
     uint        pkNormalPressure;
     uint        pkTangentPressure;
     ORIENTATION pkOrientation;
-
     ROTATION    pkRotation;  /* 1.1 */
 }
 
