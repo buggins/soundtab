@@ -2,13 +2,14 @@ module soundtab.ui.sndcanvas;
 
 import dlangui.widgets.widget;
 import soundtab.ui.noteutil;
+import soundtab.ui.synthwidget;
 import std.string : format;
 import std.math : exp, log, exp2, log2, floor;
-
+import dlangui.core.events;
 
 class SoundCanvas : Widget {
 
-    double _minPitch = 440.0 / 2;
+    double _minPitch = 440.0 / 3;
     double _maxPitch = 440.0 * 2;
     double _minNote;
     double _maxNote;
@@ -36,17 +37,20 @@ class SoundCanvas : Widget {
     }
 
     void setPosition(double x, double y, double pressure) {
-        _currentPitch = _minPitch + (_maxPitch - _minPitch) * x;
+        double note = _minNote + (_maxNote - _minNote) * x;
+        _currentPitch = fromLogScale(note);
         _currentY = y;
         invalidate();
     }
 
 
-    this() {
+    SynthWidget _synth;
+    this(SynthWidget synth) {
         super("soundCanvas");
+        _synth = synth;
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
-        backgroundColor = 0x808080;
+        backgroundColor = 0xFFFFFF;
         ///*
         double _halfTone = 1.05946309435929530980;
         _halfTone = exp2(log2(2.0) / 12);
@@ -66,6 +70,9 @@ class SoundCanvas : Widget {
         
         //*/
         setNoteRange(-12, 12);
+        trackHover = true;
+        clickable = true;
+
     }
 
     /** 
@@ -114,8 +121,9 @@ class SoundCanvas : Widget {
         //================================
         for (double n = _minNote; n <= _maxNote; n += 1) {
             Rect noteRect = getNoteRect(rc, n);
+            //noteRect.left ++;
             bool black = isBlackNote(n);
-            uint cl = black ? 0xB0B0B0 : 0xE0E0E0;
+            uint cl = black ? 0xC0C0C0 : 0xE0E0E0;
             buf.fillRect(noteRect, cl);
             if (!black) {
                 dstring noteName = getNoteName(n);
@@ -126,7 +134,7 @@ class SoundCanvas : Widget {
                 fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2 + fsize, octaveName, 0x80A0A0A0);
             }
             noteRect.right = noteRect.left + 1;
-            buf.fillRect(noteRect, 0x808080);
+            buf.fillRect(noteRect, black ? 0xD0D0D0 : 0xD0D0D0);
         }
         double currentNote = toLogScale(_currentPitch);
         if (currentNote >= _minNote && currentNote <= _maxNote) {
@@ -137,4 +145,31 @@ class SoundCanvas : Widget {
         }
     }
 
+    bool _lastProximity = false;
+    override bool onMouseEvent(MouseEvent event) {
+        if (_synth.tabletInitialized)
+            return false;
+        if (event.action == MouseAction.ButtonDown || event.action == MouseAction.ButtonUp || event.action == MouseAction.Move) {
+            double x = (event.x - _pos.left) / cast(double)_pos.width;
+            double y = (event.y - _pos.top) / cast(double)_pos.height;
+            double pressure = (event.buttonFlags & MouseFlag.LButton) ? 0.5 : 0;
+            uint buttons = 0;
+            if (event.buttonFlags & MouseFlag.LButton)
+                buttons |= 1;
+            if (event.buttonFlags & MouseFlag.RButton)
+                buttons |= 2;
+            if (!_lastProximity) {
+                _synth.onProximity(true);
+                _lastProximity = false;
+            }
+            _synth.onPositionChange(x, y, pressure, buttons);
+        } else if (event.action == MouseAction.Cancel || event.action == MouseAction.Leave || event.action == MouseAction.FocusOut) {
+            if (_lastProximity) {
+                _synth.onProximity(false);
+                _lastProximity = false;
+            }
+        }
+        return super.onMouseEvent(event);
+    }
+    
 }

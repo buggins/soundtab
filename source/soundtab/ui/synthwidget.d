@@ -50,9 +50,11 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
 
-        _soundCanvas = new SoundCanvas();
+        _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
     }
+
+    @property bool tabletInitialized() { return _tablet.isInitialized; }
 
     bool _proximity = false;
     void onPositionChange(double x, double y, double pressure, uint buttons) {

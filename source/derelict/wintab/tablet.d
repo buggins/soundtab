@@ -21,7 +21,9 @@ class Tablet {
     private LOGCONTEXT glogContext;
     private HWND _hWnd;
     /// returns true if initialized
-    @property bool isInitialized() { return _hCtx !is null; }
+    @property bool isInitialized() {
+        return !(_hCtx is null) && glogContext.lcStatus != 0;
+    }
     /// initialize tablet API for window
     bool init(HWND hWnd) {
 
