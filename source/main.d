@@ -28,7 +28,7 @@ extern (C) int UIAppMain(string[] args) {
 
     // create some widget to show in window
     //window.mainWidget = (new Button()).text("Hello, world!"d).margins(Rect(20,20,20,20));
-    window.mainWidget = new SynthWidget();
+    window.mainWidget = new SynthWidget(tablet);
 
 
     // show window
