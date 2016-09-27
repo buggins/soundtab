@@ -197,7 +197,7 @@ class Tablet {
                 break;
             case WT_PACKET:
                 //Log.d("WT_PACKET");
-                if (WTPacket(cast(HCTX)lParam, wParam, &pkt)) 
+                if (WTPacket(cast(HCTX)lParam, cast(uint)wParam, cast(void*)&pkt)) 
                 {
                     if (HIWORD(pkt.pkButtons)==TBN_DOWN) 
                     {
