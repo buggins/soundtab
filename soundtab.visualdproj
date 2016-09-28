@@ -411,6 +411,9 @@
  <Folder name="soundtab">
   <Folder name="source">
    <Folder name="soundtab">
+    <Folder name="audio">
+     <File path="source\soundtab\audio\coreaudio.d" />
+    </Folder>
     <Folder name="ui">
      <File path="source\soundtab\ui\noteutil.d" />
      <File path="source\soundtab\ui\pitchwidget.d" />

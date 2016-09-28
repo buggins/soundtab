@@ -11,10 +11,12 @@ import core.sys.windows.windows;
 import soundtab.ui.sndcanvas;
 import soundtab.ui.synthwidget;
 
+import soundtab.audio.coreaudio;
+
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
 
-
+    initAudio();
 
     // create window
     Log.d("Creating window");
