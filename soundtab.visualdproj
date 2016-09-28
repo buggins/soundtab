@@ -413,6 +413,7 @@
    <Folder name="soundtab">
     <Folder name="audio">
      <File path="source\soundtab\audio\coreaudio.d" />
+     <File path="source\soundtab\audio\utils.d" />
     </Folder>
     <Folder name="ui">
      <File path="source\soundtab\ui\noteutil.d" />

@@ -12,6 +12,7 @@ import soundtab.ui.sndcanvas;
 import soundtab.ui.synthwidget;
 
 import soundtab.audio.coreaudio;
+import soundtab.audio.utils;
 
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
