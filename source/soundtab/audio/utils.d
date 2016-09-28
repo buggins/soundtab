@@ -301,14 +301,33 @@ class MMDevices {
     }
 }
 
+enum SampleFormat {
+    signed16,
+    float32
+}
+
 class MyAudioSource {
+
+    double _currentPitch = 0; // Hz
+    double _currentGain = 0; // 0..1
+
+    int samplesPerSecond = 44100;
+    int channels = 2;
+    SampleFormat sampleFormat = SampleFormat.float32;
+
+    int phase = 0;
+
     WAVEFORMATEXTENSIBLE _format;
     HRESULT SetFormat(WAVEFORMATEX * fmt) {
+        channels = _format.nChannels;
+        samplesPerSecond = _format.nSamplesPerSec;
         if (fmt.wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
             WAVEFORMATEXTENSIBLE * formatEx = cast(WAVEFORMATEXTENSIBLE*)fmt;
             _format = *formatEx;
+            sampleFormat = (_format.SubFormat == MEDIASUBTYPE_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
         } else {
             _format = *fmt;
+            sampleFormat = (_format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
         }
         return S_OK;
     }
