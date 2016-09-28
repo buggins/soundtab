@@ -455,6 +455,93 @@ interface IAudioClient : IUnknown {
             void **ppv);
 }
 
+enum AUDIO_STREAM_CATEGORY
+{
+    AudioCategory_Other = 0,
+    AudioCategory_ForegroundOnlyMedia = 1,
+    AudioCategory_BackgroundCapableMedia = 2,
+    AudioCategory_Communications = 3,
+    AudioCategory_Alerts = 4,
+    AudioCategory_SoundEffects = 5,
+    AudioCategory_GameEffects = 6,
+    AudioCategory_GameMedia = 7,
+    AudioCategory_GameChat = 8,
+    AudioCategory_Speech = 9,
+    AudioCategory_Movie = 10,
+    AudioCategory_Media = 11,
+}
+
+struct AudioClientProperties
+{
+    UINT32 cbSize;
+    BOOL bIsOffload;
+    AUDIO_STREAM_CATEGORY eCategory;
+    AUDCLNT_STREAMOPTIONS Options;
+}
+
+enum AUDCLNT_STREAMOPTIONS
+{
+    AUDCLNT_STREAMOPTIONS_NONE	= 0,
+    AUDCLNT_STREAMOPTIONS_RAW	= 0x1,
+    AUDCLNT_STREAMOPTIONS_MATCH_FORMAT	= 0x2
+}
+
+
+const IID IID_IAudioClient2 = makeGuid!"726778CD-F60A-4eda-82DE-E47610CD78AA";
+interface IAudioClient2 : IAudioClient {
+    HRESULT IsOffloadCapable( 
+            /* [annotation][in] */ 
+            AUDIO_STREAM_CATEGORY Category,
+            /* [annotation][out] */ 
+            ref BOOL pbOffloadCapable);
+
+    HRESULT SetClientProperties( 
+            /* [annotation][in] */ 
+            const ref AudioClientProperties pProperties);
+
+    HRESULT GetBufferSizeLimits( 
+            /* [annotation][in] */ 
+            const WAVEFORMATEX *pFormat,
+            /* [annotation][in] */ 
+            BOOL bEventDriven,
+            /* [annotation][out] */ 
+            ref REFERENCE_TIME phnsMinBufferDuration,
+            /* [annotation][out] */ 
+            ref REFERENCE_TIME phnsMaxBufferDuration);
+}
+
+const IID IID_IAudioClient3 = makeGuid!"7ED4EE07-8E67-4CD4-8C1A-2B7A5987AD42";
+interface IAudioClient3 : IAudioClient2 {
+    HRESULT GetSharedModeEnginePeriod( 
+            /* [annotation][in] */ 
+            const WAVEFORMATEX *pFormat,
+            /* [annotation][out] */ 
+            ref UINT32 pDefaultPeriodInFrames,
+            /* [annotation][out] */ 
+            ref UINT32 pFundamentalPeriodInFrames,
+            /* [annotation][out] */ 
+            ref UINT32 pMinPeriodInFrames,
+            /* [annotation][out] */ 
+            ref UINT32 pMaxPeriodInFrames);
+
+    HRESULT GetCurrentSharedModeEnginePeriod( 
+            /* [unique][annotation][out] */ 
+            ref WAVEFORMATEX *ppFormat,
+            /* [annotation][out] */ 
+            ref UINT32 pCurrentPeriodInFrames);
+
+    HRESULT InitializeSharedAudioStream( 
+            /* [annotation][in] */ 
+            DWORD StreamFlags,
+            /* [annotation][in] */ 
+            UINT32 PeriodInFrames,
+            /* [annotation][in] */ 
+            const WAVEFORMATEX *pFormat,
+            /* [annotation][in] */ 
+            LPCGUID AudioSessionGuid);
+}
+
+
 const IID IID_IMMDeviceEnumerator = makeGuid!"A95664D2-9614-4F35-A746-DE8DB63617E6";
 const CLSID CLSID_MMDeviceEnumerator = makeGuid!"BCDE0395-E52F-467C-8E3D-C4579291692E";
 interface IMMDeviceEnumerator : IUnknown {
