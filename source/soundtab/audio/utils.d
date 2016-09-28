@@ -54,6 +54,25 @@ struct WstrAutoPtr {
         if (ptr)
             CoTaskMemFree(ptr);
     }
+    @property wstring toWstring() {
+        if (!ptr)
+            return null;
+        return fromWstringz(ptr);
+    }
+    @property string toString() {
+        if (!ptr)
+            return null;
+        import std.utf : toUTF8;
+        return fromWstringz(ptr).toUTF8;
+    }
+}
+
+struct PropVariant {
+    PROPVARIANT var;
+    alias var this;
+    ~this() {
+        PropVariantClear(&var);
+    }
 }
 
 string getStringProp(IPropertyStore propStore, const ref PROPERTYKEY key) {
@@ -86,7 +105,7 @@ class MMDevice {
     bool isDefault;
 
     override string toString() {
-        return id ~ " : \"" ~ friendlyName ~ "\"";
+        return (isDefault ? "DEFAULT:" : "") ~ id ~ " : \"" ~ friendlyName ~ "\"";
     }
 }
 
@@ -101,19 +120,40 @@ class MMDevices {
         import std.utf : toUTF8;
         if (!_initialized || !_pEnum)
             return null;
+
+        HRESULT hr;
+        string defDeviceId;
+        {
+            ComAutoPtr!IMMDevice defDevice;
+            hr = _pEnum.GetDefaultAudioEndpoint( 
+                    /* [in] */ 
+                    EDataFlow.eRender,
+                    /* [in] */ 
+                    ERole.eMultimedia,
+                    /* [out] */ 
+                    defDevice);
+            if (!hr) {
+                WstrAutoPtr pId;
+                hr = defDevice.GetId(pId);
+                defDeviceId = pId.toString;
+            }
+        }
+        Log.d("Default device ID=", defDeviceId);
+
         MMDevice[] res;
         ComAutoPtr!IMMDeviceCollection pDevices;
-        auto hr = _pEnum.EnumAudioEndpoints(
-                                            /* [in] */ 
-                                            EDataFlow.eRender,
-                                            /* [in] */ 
-                                            DEVICE_STATE_ACTIVE, //DWORD dwStateMask,
-                                            /* [out] */ 
-                                            pDevices);
+        hr = _pEnum.EnumAudioEndpoints(
+                /* [in] */ 
+                EDataFlow.eRender,
+                /* [in] */ 
+                DEVICE_STATE_ACTIVE, //DWORD dwStateMask,
+                /* [out] */ 
+                pDevices);
         if (hr) {
             Log.e("MMDeviceEnumerator.EnumAudioEndpoints failed");
             return null;
         }
+
 
         DWORD count;
         hr = pDevices.GetCount(&count);
@@ -139,6 +179,7 @@ class MMDevices {
                     dev.interfaceName = propStore.getStringProp(DEVPKEY_DeviceInterface_FriendlyName);
                     dev.desc = propStore.getStringProp(DEVPKEY_Device_DeviceDesc);
                 }
+                dev.isDefault = dev.id == defDeviceId;
                 //Log.d("ID: ", id, " state:", state, " friendlyName:", friendlyName, "\nintfName=", interfaceFriendlyName, "\ndesc:", deviceDesc);
                 res ~= dev;
             }

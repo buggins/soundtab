@@ -413,3 +413,9 @@ interface IMMDeviceEnumerator : IUnknown {
             IMMNotificationClient pClient);
 }
 
+extern HRESULT PropVariantClear(PROPVARIANT* pvar);
+
+extern HRESULT FreePropVariantArray(
+                                    ULONG cVariants,
+                                    PROPVARIANT* rgvars);
+
