@@ -301,6 +301,24 @@ class MMDevices {
     }
 }
 
+class MyAudioSource {
+    WAVEFORMATEXTENSIBLE _format;
+    HRESULT SetFormat(WAVEFORMATEX * fmt) {
+        if (fmt.wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+            WAVEFORMATEXTENSIBLE * formatEx = cast(WAVEFORMATEXTENSIBLE*)fmt;
+            _format = *formatEx;
+        } else {
+            _format = *fmt;
+        }
+        return S_OK;
+    }
+    HRESULT LoadData(DWORD frameCount, BYTE * buf, ref DWORD flags) {
+        // TODO
+        flags = AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT;
+        return S_OK;
+    }
+}
+
 bool initAudio() {
     HRESULT hr;
     MMDevices devices = new MMDevices();
@@ -312,6 +330,8 @@ bool initAudio() {
     if (!list)
         return false;
     Log.d("Device list: ", list);
+
+    MyAudioSource pMySource = new MyAudioSource();
 
     if (list.length > 0) {
         ComAutoPtr!IMMEndpoint endpoint;
@@ -342,6 +362,7 @@ bool initAudio() {
                 //WAVE_FORMAT_IEEE_FLOAT;
             }
             const REFTIMES_PER_SEC = 10000000;
+            const REFTIMES_PER_MILLISEC = 10000;
             REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
             hr = audioClient.Initialize(
                 AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
@@ -350,10 +371,54 @@ bool initAudio() {
                 0,
                 mixFormat,
                 null);
-            hr = audioClient.GetBufferSize(bufferSize);
+
+            UINT32 bufferFrameCount;
+
+            hr = pMySource.SetFormat(mixFormat);
+
+            hr = audioClient.GetBufferSize(bufferFrameCount);
             hr = audioClient.GetStreamLatency(streamLatency);
             hr = audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
-            Log.d("Found audio client with bufferSize=", bufferSize, " latency=", streamLatency, " defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
+            Log.d("Found audio client with bufferSize=", bufferFrameCount, " latency=", streamLatency, " defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
+            ComAutoPtr!IAudioRenderClient pRenderClient;
+            hr = audioClient.GetService(
+                IID_IAudioRenderClient,
+                cast(void**)&pRenderClient.ptr);
+            // Grab the entire buffer for the initial fill operation.
+            BYTE *pData;
+            DWORD flags;
+            hr = pRenderClient.GetBuffer(bufferFrameCount, pData);
+            hr = pMySource.LoadData(bufferFrameCount, pData, flags);
+            hr = pRenderClient.ReleaseBuffer(bufferFrameCount, flags);
+            // Calculate the actual duration of the allocated buffer.
+            REFERENCE_TIME hnsActualDuration;
+            hnsActualDuration = cast(long)REFTIMES_PER_SEC * bufferFrameCount / mixFormat.nSamplesPerSec;
+            hr = audioClient.Start();  // Start playing.
+            // Each loop fills about half of the shared buffer.
+            while (flags != AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT)
+            {
+                UINT32 numFramesAvailable;
+                UINT32 numFramesPadding;
+                // Sleep for half the buffer duration.
+                Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
+
+                // See how much buffer space is available.
+                hr = audioClient.GetCurrentPadding(numFramesPadding);
+
+                numFramesAvailable = bufferFrameCount - numFramesPadding;
+
+                // Grab all the available space in the shared buffer.
+                hr = pRenderClient.GetBuffer(numFramesAvailable, pData);
+
+                // Get next 1/2-second of data from the audio source.
+                hr = pMySource.LoadData(numFramesAvailable, pData, flags);
+
+                hr = pRenderClient.ReleaseBuffer(numFramesAvailable, flags);
+            }
+            // Wait for last data in buffer to play before stopping.
+            Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
+            hr = audioClient.Stop();
+
         }
     }
 

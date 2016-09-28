@@ -471,6 +471,13 @@ enum AUDIO_STREAM_CATEGORY
     AudioCategory_Media = 11,
 }
 
+enum AUDCLNT_BUFFERFLAGS
+{
+    AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY	= 0x1,
+    AUDCLNT_BUFFERFLAGS_SILENT	= 0x2,
+    AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR	= 0x4
+}
+
 struct AudioClientProperties
 {
     UINT32 cbSize;
@@ -541,6 +548,20 @@ interface IAudioClient3 : IAudioClient2 {
             LPCGUID AudioSessionGuid);
 }
 
+const IID IID_IAudioRenderClient = makeGuid!"F294ACFC-3146-4483-A7BF-ADDCA7C260E2";
+interface IAudioRenderClient : IUnknown {
+    HRESULT GetBuffer( 
+            /* [annotation][in] */ 
+            UINT32 NumFramesRequested,
+            /* [annotation][out] */ //_Outptr_result_buffer_(_Inexpressible_("NumFramesRequested * pFormat->nBlockAlign"))  
+            ref BYTE *ppData);
+
+    HRESULT ReleaseBuffer( 
+            /* [annotation][in] */ 
+            UINT32 NumFramesWritten,
+            /* [annotation][in] */ 
+            DWORD dwFlags);
+}
 
 const IID IID_IMMDeviceEnumerator = makeGuid!"A95664D2-9614-4F35-A746-DE8DB63617E6";
 const CLSID CLSID_MMDeviceEnumerator = makeGuid!"BCDE0395-E52F-467C-8E3D-C4579291692E";
