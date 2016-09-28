@@ -28,13 +28,62 @@ wstring getWstringProp(IPropertyStore propStore, const ref PROPERTYKEY key) {
     return null;
 }
 
+struct ComAutoPtr(T : IUnknown) {
+    T ptr;
+    alias ptr this;
+    ref ComAutoPtr opAssign(T value) {
+        ptr = value;
+        return this;
+    }
+    ~this() {
+        if (ptr)
+            ptr.Release();
+    }
+}
+
+struct WstrAutoPtr {
+    LPWSTR ptr;
+    alias ptr this;
+    ref WstrAutoPtr opAssign(LPWSTR value) {
+        if (value && ptr && value !is ptr)
+            CoTaskMemFree(ptr);
+        ptr = value;
+        return this;
+    }
+    ~this() {
+        if (ptr)
+            CoTaskMemFree(ptr);
+    }
+}
+
+string getStringProp(IPropertyStore propStore, const ref PROPERTYKEY key) {
+    if (!propStore)
+        return null;
+    PROPVARIANT var;
+    // Initialize container for property value.
+    //PropVariantInit(&varName);
+    // Get the endpoint's friendly-name property.
+    HRESULT hr = propStore.GetValue(key, var);
+    if (hr)
+        return null; // not found
+    import std.utf;
+    if (var.vt == VARENUM.VT_BSTR) {
+        return fromWstringz(var.bstrVal).toUTF8;
+    }
+    if (var.vt == VARENUM.VT_LPWSTR) {
+        return fromWstringz(var.pwszVal).toUTF8;
+    }
+    Log.d("Unknown variant type ", var.vt);
+    return null;
+}
+
 class MMDevice {
     string id;
     string friendlyName;
     string interfaceName;
     string desc;
     uint state;
-    bool def;
+    bool isDefault;
 
     override string toString() {
         return id ~ " : \"" ~ friendlyName ~ "\"";
@@ -53,14 +102,14 @@ class MMDevices {
         if (!_initialized || !_pEnum)
             return null;
         MMDevice[] res;
-        IMMDeviceCollection pDevices;
+        ComAutoPtr!IMMDeviceCollection pDevices;
         auto hr = _pEnum.EnumAudioEndpoints(
                                             /* [in] */ 
                                             EDataFlow.eRender,
                                             /* [in] */ 
                                             DEVICE_STATE_ACTIVE, //DWORD dwStateMask,
                                             /* [out] */ 
-                                            &pDevices);
+                                            pDevices);
         if (hr) {
             Log.e("MMDeviceEnumerator.EnumAudioEndpoints failed");
             return null;
@@ -70,27 +119,27 @@ class MMDevices {
         hr = pDevices.GetCount(&count);
 
         for (DWORD i = 0; i < count; i++) {
-            IMMDevice pDevice;
-            hr = pDevices.Item(i, &pDevice);
+            ComAutoPtr!IMMDevice pDevice;
+            hr = pDevices.Item(i, pDevice);
             if (!hr) {
                 MMDevice dev = new MMDevice();
-                wchar * pId;
-                hr = pDevice.GetId(&pId);
-                wstring id = fromWstringz(pId);
+                WstrAutoPtr pId;
+                hr = pDevice.GetId(pId);
+                string id = fromWstringz(pId).toUTF8;
                 DWORD state;
-                hr = pDevice.GetState(&state);
+                hr = pDevice.GetState(state);
 
-                IPropertyStore propStore;
-                hr = pDevice.OpenPropertyStore(STGM_READ, &propStore);
-                wstring friendlyName = propStore.getWstringProp(DEVPKEY_Device_FriendlyName);
-                wstring interfaceFriendlyName = propStore.getWstringProp(DEVPKEY_DeviceInterface_FriendlyName);
-                wstring deviceDesc = propStore.getWstringProp(DEVPKEY_Device_DeviceDesc);
-                //Log.d("ID: ", id, " state:", state, " friendlyName:", friendlyName, "\nintfName=", interfaceFriendlyName, "\ndesc:", deviceDesc);
-                dev.id = id.toUTF8;
-                dev.friendlyName = friendlyName.toUTF8;
-                dev.interfaceName = interfaceFriendlyName.toUTF8;
-                dev.desc = deviceDesc.toUTF8;
+                dev.id = id;
                 dev.state = state;
+
+                ComAutoPtr!IPropertyStore propStore;
+                hr = pDevice.OpenPropertyStore(STGM_READ, propStore);
+                if (!hr) {
+                    dev.friendlyName = propStore.getStringProp(DEVPKEY_Device_FriendlyName);
+                    dev.interfaceName = propStore.getStringProp(DEVPKEY_DeviceInterface_FriendlyName);
+                    dev.desc = propStore.getStringProp(DEVPKEY_Device_DeviceDesc);
+                }
+                //Log.d("ID: ", id, " state:", state, " friendlyName:", friendlyName, "\nintfName=", interfaceFriendlyName, "\ndesc:", deviceDesc);
                 res ~= dev;
             }
         }

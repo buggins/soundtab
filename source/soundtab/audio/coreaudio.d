@@ -317,7 +317,7 @@ interface IMMDeviceCollection : IUnknown {
             /* [in] */ 
             UINT nDevice,
             /* [out] */ 
-            IMMDevice * ppDevice);
+            ref IMMDevice ppDevice);
 }
 
 const IID IID_IMMDevice = makeGuid!"D666063F-1587-4E43-81F1-B948E807363F";
@@ -336,15 +336,15 @@ interface IMMDevice : IUnknown {
             /* [in] */ 
             DWORD stgmAccess,
             /* [out] */ 
-            IPropertyStore *ppProperties);
+            ref IPropertyStore ppProperties);
 
     HRESULT GetId( 
             /* [out] */ 
-            LPWSTR *ppstrId);
+            ref LPWSTR ppstrId);
 
     HRESULT GetState( 
             /* [out] */ 
-            DWORD *pdwState);
+            ref DWORD pdwState);
 }
 
 
@@ -388,7 +388,7 @@ interface IMMDeviceEnumerator : IUnknown {
             /* [in] */ 
             DWORD dwStateMask,
             /* [out] */ 
-            IMMDeviceCollection *ppDevices);
+            ref IMMDeviceCollection ppDevices);
     
     HRESULT GetDefaultAudioEndpoint( 
             /* [in] */ 
@@ -396,7 +396,7 @@ interface IMMDeviceEnumerator : IUnknown {
             /* [in] */ 
             ERole role,
             /* [out] */ 
-            IMMDevice *ppEndpoint);
+            ref IMMDevice ppEndpoint);
     
     HRESULT GetDevice( 
             /*  */ 
