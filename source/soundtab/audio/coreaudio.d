@@ -311,7 +311,7 @@ const IID IID_IMMDeviceCollection = makeGuid!"0BD7A1BE-7A1A-44DB-8397-CC5392387B
 interface IMMDeviceCollection : IUnknown {
     HRESULT GetCount( 
             /* [out] */ 
-            UINT *pcDevices);
+            ref UINT pcDevices);
 
     HRESULT Item( 
             /* [in] */ 
@@ -324,7 +324,7 @@ const IID IID_IMMDevice = makeGuid!"D666063F-1587-4E43-81F1-B948E807363F";
 interface IMMDevice : IUnknown {
     HRESULT Activate( 
             /* [in] */ 
-            REFIID iid,
+            const ref IID iid,
             /* [in] */ 
             DWORD dwClsCtx,
             /* [unique][in] */ 
@@ -379,6 +379,82 @@ interface IMMNotificationClient : IUnknown {
             const PROPERTYKEY key);
 }
 
+const IID IID_IMMEndpoint = makeGuid!"1BE09788-6894-4089-8586-9A2A6C265AC5";
+interface IMMEndpoint : IUnknown {
+    HRESULT GetDataFlow( 
+        /* [annotation][out] */ 
+        ref EDataFlow pDataFlow);
+}
+
+alias REFERENCE_TIME = long;
+
+enum AUDCLNT_SHAREMODE
+{
+    AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_SHAREMODE_EXCLUSIVE
+}
+
+const IID IID_IAudioClient = makeGuid!"1CB9AD4C-DBFA-4c32-B178-C2F568A703B2";
+interface IAudioClient : IUnknown {
+    HRESULT Initialize( 
+            /* [annotation][in] */ 
+            AUDCLNT_SHAREMODE ShareMode,
+            /* [annotation][in] */ 
+            DWORD StreamFlags,
+            /* [annotation][in] */ 
+            REFERENCE_TIME hnsBufferDuration,
+            /* [annotation][in] */ 
+            REFERENCE_TIME hnsPeriodicity,
+            /* [annotation][in] */ 
+            const WAVEFORMATEX *pFormat,
+            /* [annotation][in] */ 
+            LPCGUID AudioSessionGuid);
+
+    HRESULT GetBufferSize( 
+            /* [annotation][out] */ 
+            ref UINT32 pNumBufferFrames);
+
+    HRESULT GetStreamLatency( 
+            /* [annotation][out] */ 
+            ref REFERENCE_TIME phnsLatency);
+
+    HRESULT GetCurrentPadding( 
+            /* [annotation][out] */ 
+            ref UINT32 pNumPaddingFrames);
+
+    HRESULT IsFormatSupported( 
+            /* [annotation][in] */ 
+            AUDCLNT_SHAREMODE ShareMode,
+            /* [annotation][in] */ 
+            const WAVEFORMATEX *pFormat,
+            /* [unique][annotation][out] */ 
+            WAVEFORMATEX **ppClosestMatch);
+
+    HRESULT GetMixFormat( 
+            /* [annotation][out] */ 
+            ref WAVEFORMATEX *ppDeviceFormat);
+
+    HRESULT GetDevicePeriod( 
+            /* [annotation][out] */ 
+            ref REFERENCE_TIME phnsDefaultDevicePeriod,
+            /* [annotation][out] */ 
+            ref REFERENCE_TIME phnsMinimumDevicePeriod);
+
+    HRESULT Start();
+
+    HRESULT Stop();
+
+    HRESULT Reset();
+
+    HRESULT SetEventHandle( /* [in] */ HANDLE eventHandle);
+
+    HRESULT GetService( 
+            /* [annotation][in] */ 
+            const ref IID riid,
+            /* [annotation][iid_is][out] */ 
+            void **ppv);
+}
+
 const IID IID_IMMDeviceEnumerator = makeGuid!"A95664D2-9614-4F35-A746-DE8DB63617E6";
 const CLSID CLSID_MMDeviceEnumerator = makeGuid!"BCDE0395-E52F-467C-8E3D-C4579291692E";
 interface IMMDeviceEnumerator : IUnknown {
@@ -418,4 +494,173 @@ extern HRESULT PropVariantClear(PROPVARIANT* pvar);
 extern HRESULT FreePropVariantArray(
                                     ULONG cVariants,
                                     PROPVARIANT* rgvars);
+
+
+enum WAVE_FORMAT_UNKNOWN                    =0x0000; /* Microsoft Corporation */
+enum WAVE_FORMAT_ADPCM                      =0x0002; /* Microsoft Corporation */
+enum WAVE_FORMAT_IEEE_FLOAT                 =0x0003; /* Microsoft Corporation */
+enum WAVE_FORMAT_VSELP                      =0x0004; /* Compaq Computer Corp. */
+enum WAVE_FORMAT_IBM_CVSD                   =0x0005; /* IBM Corporation */
+enum WAVE_FORMAT_ALAW                       =0x0006; /* Microsoft Corporation */
+enum WAVE_FORMAT_MULAW                      =0x0007; /* Microsoft Corporation */
+enum WAVE_FORMAT_DTS                        =0x0008; /* Microsoft Corporation */
+enum WAVE_FORMAT_DRM                        =0x0009; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMAVOICE9                  =0x000A; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMAVOICE10                 =0x000B; /* Microsoft Corporation */
+enum WAVE_FORMAT_OKI_ADPCM                  =0x0010; /* OKI */
+enum WAVE_FORMAT_DVI_ADPCM                  =0x0011; /* Intel Corporation */
+enum WAVE_FORMAT_IMA_ADPCM                  =(WAVE_FORMAT_DVI_ADPCM); /*  Intel Corporation */
+enum WAVE_FORMAT_MEDIASPACE_ADPCM           =0x0012; /* Videologic */
+enum WAVE_FORMAT_SIERRA_ADPCM               =0x0013; /* Sierra Semiconductor Corp */
+enum WAVE_FORMAT_G723_ADPCM                 =0x0014; /* Antex Electronics Corporation */
+enum WAVE_FORMAT_DIGISTD                    =0x0015; /* DSP Solutions, Inc. */
+enum WAVE_FORMAT_DIGIFIX                    =0x0016; /* DSP Solutions, Inc. */
+enum WAVE_FORMAT_DIALOGIC_OKI_ADPCM         =0x0017; /* Dialogic Corporation */
+enum WAVE_FORMAT_MEDIAVISION_ADPCM          =0x0018; /* Media Vision, Inc. */
+enum WAVE_FORMAT_CU_CODEC                   =0x0019; /* Hewlett-Packard Company */
+enum WAVE_FORMAT_YAMAHA_ADPCM               =0x0020; /* Yamaha Corporation of America */
+enum WAVE_FORMAT_SONARC                     =0x0021; /* Speech Compression */
+enum WAVE_FORMAT_DSPGROUP_TRUESPEECH        =0x0022; /* DSP Group, Inc */
+enum WAVE_FORMAT_ECHOSC1                    =0x0023; /* Echo Speech Corporation */
+enum WAVE_FORMAT_AUDIOFILE_AF36             =0x0024; /* Virtual Music, Inc. */
+enum WAVE_FORMAT_APTX                       =0x0025; /* Audio Processing Technology */
+enum WAVE_FORMAT_AUDIOFILE_AF10             =0x0026; /* Virtual Music, Inc. */
+enum WAVE_FORMAT_PROSODY_1612               =0x0027; /* Aculab plc */
+enum WAVE_FORMAT_LRC                        =0x0028; /* Merging Technologies S.A. */
+enum WAVE_FORMAT_DOLBY_AC2                  =0x0030; /* Dolby Laboratories */
+enum WAVE_FORMAT_GSM610                     =0x0031; /* Microsoft Corporation */
+enum WAVE_FORMAT_MSNAUDIO                   =0x0032; /* Microsoft Corporation */
+enum WAVE_FORMAT_ANTEX_ADPCME               =0x0033; /* Antex Electronics Corporation */
+enum WAVE_FORMAT_CONTROL_RES_VQLPC          =0x0034; /* Control Resources Limited */
+enum WAVE_FORMAT_DIGIREAL                   =0x0035; /* DSP Solutions, Inc. */
+enum WAVE_FORMAT_DIGIADPCM                  =0x0036; /* DSP Solutions, Inc. */
+enum WAVE_FORMAT_CONTROL_RES_CR10           =0x0037; /* Control Resources Limited */
+enum WAVE_FORMAT_NMS_VBXADPCM               =0x0038; /* Natural MicroSystems */
+enum WAVE_FORMAT_CS_IMAADPCM                =0x0039; /* Crystal Semiconductor IMA ADPCM */
+enum WAVE_FORMAT_ECHOSC3                    =0x003A; /* Echo Speech Corporation */
+enum WAVE_FORMAT_ROCKWELL_ADPCM             =0x003B; /* Rockwell International */
+enum WAVE_FORMAT_ROCKWELL_DIGITALK          =0x003C; /* Rockwell International */
+enum WAVE_FORMAT_XEBEC                      =0x003D; /* Xebec Multimedia Solutions Limited */
+enum WAVE_FORMAT_G721_ADPCM                 =0x0040; /* Antex Electronics Corporation */
+enum WAVE_FORMAT_G728_CELP                  =0x0041; /* Antex Electronics Corporation */
+enum WAVE_FORMAT_MSG723                     =0x0042; /* Microsoft Corporation */
+enum WAVE_FORMAT_MPEG                       =0x0050; /* Microsoft Corporation */
+enum WAVE_FORMAT_RT24                       =0x0052; /* InSoft, Inc. */
+enum WAVE_FORMAT_PAC                        =0x0053; /* InSoft, Inc. */
+enum WAVE_FORMAT_MPEGLAYER3                 =0x0055; /* ISO/MPEG Layer3 Format Tag */
+enum WAVE_FORMAT_LUCENT_G723                =0x0059; /* Lucent Technologies */
+enum WAVE_FORMAT_CIRRUS                     =0x0060; /* Cirrus Logic */
+enum WAVE_FORMAT_ESPCM                      =0x0061; /* ESS Technology */
+enum WAVE_FORMAT_VOXWARE                    =0x0062; /* Voxware Inc */
+enum WAVE_FORMAT_CANOPUS_ATRAC              =0x0063; /* Canopus, co., Ltd. */
+enum WAVE_FORMAT_G726_ADPCM                 =0x0064; /* APICOM */
+enum WAVE_FORMAT_G722_ADPCM                 =0x0065; /* APICOM */
+enum WAVE_FORMAT_DSAT_DISPLAY               =0x0067; /* Microsoft Corporation */
+enum WAVE_FORMAT_VOXWARE_BYTE_ALIGNED       =0x0069; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_AC8                =0x0070; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_AC10               =0x0071; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_AC16               =0x0072; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_AC20               =0x0073; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_RT24               =0x0074; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_RT29               =0x0075; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_RT29HW             =0x0076; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_VR12               =0x0077; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_VR18               =0x0078; /* Voxware Inc */
+enum WAVE_FORMAT_VOXWARE_TQ40               =0x0079; /* Voxware Inc */
+enum WAVE_FORMAT_SOFTSOUND                  =0x0080; /* Softsound, Ltd. */
+enum WAVE_FORMAT_VOXWARE_TQ60               =0x0081; /* Voxware Inc */
+enum WAVE_FORMAT_MSRT24                     =0x0082; /* Microsoft Corporation */
+enum WAVE_FORMAT_G729A                      =0x0083; /* AT&T Labs, Inc. */
+enum WAVE_FORMAT_MVI_MVI2                   =0x0084; /* Motion Pixels */
+enum WAVE_FORMAT_DF_G726                    =0x0085; /* DataFusion Systems (Pty) (Ltd) */
+enum WAVE_FORMAT_DF_GSM610                  =0x0086; /* DataFusion Systems (Pty) (Ltd) */
+enum WAVE_FORMAT_ISIAUDIO                   =0x0088; /* Iterated Systems, Inc. */
+enum WAVE_FORMAT_ONLIVE                     =0x0089; /* OnLive! Technologies, Inc. */
+enum WAVE_FORMAT_SBC24                      =0x0091; /* Siemens Business Communications Sys */
+enum WAVE_FORMAT_DOLBY_AC3_SPDIF            =0x0092; /* Sonic Foundry */
+enum WAVE_FORMAT_MEDIASONIC_G723            =0x0093; /* MediaSonic */
+enum WAVE_FORMAT_PROSODY_8KBPS              =0x0094; /* Aculab plc */
+enum WAVE_FORMAT_ZYXEL_ADPCM                =0x0097; /* ZyXEL Communications, Inc. */
+enum WAVE_FORMAT_PHILIPS_LPCBB              =0x0098; /* Philips Speech Processing */
+enum WAVE_FORMAT_PACKED                     =0x0099; /* Studer Professional Audio AG */
+enum WAVE_FORMAT_MALDEN_PHONYTALK           =0x00A0; /* Malden Electronics Ltd. */
+enum WAVE_FORMAT_RAW_AAC1                   =0x00FF; /* For Raw AAC, with format block AudioSpecificConfig() (as defined by MPEG-4), that follows WAVEFORMATEX */
+enum WAVE_FORMAT_RHETOREX_ADPCM             =0x0100; /* Rhetorex Inc. */
+enum WAVE_FORMAT_IRAT                       =0x0101; /* BeCubed Software Inc. */
+enum WAVE_FORMAT_VIVO_G723                  =0x0111; /* Vivo Software */
+enum WAVE_FORMAT_VIVO_SIREN                 =0x0112; /* Vivo Software */
+enum WAVE_FORMAT_DIGITAL_G723               =0x0123; /* Digital Equipment Corporation */
+enum WAVE_FORMAT_SANYO_LD_ADPCM             =0x0125; /* Sanyo Electric Co., Ltd. */
+enum WAVE_FORMAT_SIPROLAB_ACEPLNET          =0x0130; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_SIPROLAB_ACELP4800         =0x0131; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_SIPROLAB_ACELP8V3          =0x0132; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_SIPROLAB_G729              =0x0133; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_SIPROLAB_G729A             =0x0134; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_SIPROLAB_KELVIN            =0x0135; /* Sipro Lab Telecom Inc. */
+enum WAVE_FORMAT_G726ADPCM                  =0x0140; /* Dictaphone Corporation */
+enum WAVE_FORMAT_QUALCOMM_PUREVOICE         =0x0150; /* Qualcomm, Inc. */
+enum WAVE_FORMAT_QUALCOMM_HALFRATE          =0x0151; /* Qualcomm, Inc. */
+enum WAVE_FORMAT_TUBGSM                     =0x0155; /* Ring Zero Systems, Inc. */
+enum WAVE_FORMAT_MSAUDIO1                   =0x0160; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMAUDIO2                   =0x0161; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMAUDIO3                   =0x0162; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMAUDIO_LOSSLESS           =0x0163; /* Microsoft Corporation */
+enum WAVE_FORMAT_WMASPDIF                   =0x0164; /* Microsoft Corporation */
+enum WAVE_FORMAT_UNISYS_NAP_ADPCM           =0x0170; /* Unisys Corp. */
+enum WAVE_FORMAT_UNISYS_NAP_ULAW            =0x0171; /* Unisys Corp. */
+enum WAVE_FORMAT_UNISYS_NAP_ALAW            =0x0172; /* Unisys Corp. */
+enum WAVE_FORMAT_UNISYS_NAP_16K             =0x0173; /* Unisys Corp. */
+enum WAVE_FORMAT_CREATIVE_ADPCM             =0x0200; /* Creative Labs, Inc */
+enum WAVE_FORMAT_CREATIVE_FASTSPEECH8       =0x0202; /* Creative Labs, Inc */
+enum WAVE_FORMAT_CREATIVE_FASTSPEECH10      =0x0203; /* Creative Labs, Inc */
+enum WAVE_FORMAT_UHER_ADPCM                 =0x0210; /* UHER informatic GmbH */
+enum WAVE_FORMAT_QUARTERDECK                =0x0220; /* Quarterdeck Corporation */
+enum WAVE_FORMAT_ILINK_VC                   =0x0230; /* I-link Worldwide */
+enum WAVE_FORMAT_RAW_SPORT                  =0x0240; /* Aureal Semiconductor */
+enum WAVE_FORMAT_ESST_AC3                   =0x0241; /* ESS Technology, Inc. */
+enum WAVE_FORMAT_GENERIC_PASSTHRU           =0x0249;
+enum WAVE_FORMAT_IPI_HSX                    =0x0250; /* Interactive Products, Inc. */
+enum WAVE_FORMAT_IPI_RPELP                  =0x0251; /* Interactive Products, Inc. */
+enum WAVE_FORMAT_CS2                        =0x0260; /* Consistent Software */
+enum WAVE_FORMAT_SONY_SCX                   =0x0270; /* Sony Corp. */
+enum WAVE_FORMAT_FM_TOWNS_SND               =0x0300; /* Fujitsu Corp. */
+enum WAVE_FORMAT_BTV_DIGITAL                =0x0400; /* Brooktree Corporation */
+enum WAVE_FORMAT_QDESIGN_MUSIC              =0x0450; /* QDesign Corporation */
+enum WAVE_FORMAT_VME_VMPCM                  =0x0680; /* AT&T Labs, Inc. */
+enum WAVE_FORMAT_TPC                        =0x0681; /* AT&T Labs, Inc. */
+enum WAVE_FORMAT_OLIGSM                     =0x1000; /* Ing C. Olivetti & C., S.p.A. */
+enum WAVE_FORMAT_OLIADPCM                   =0x1001; /* Ing C. Olivetti & C., S.p.A. */
+enum WAVE_FORMAT_OLICELP                    =0x1002; /* Ing C. Olivetti & C., S.p.A. */
+enum WAVE_FORMAT_OLISBC                     =0x1003; /* Ing C. Olivetti & C., S.p.A. */
+enum WAVE_FORMAT_OLIOPR                     =0x1004; /* Ing C. Olivetti & C., S.p.A. */
+enum WAVE_FORMAT_LH_CODEC                   =0x1100; /* Lernout & Hauspie */
+enum WAVE_FORMAT_NORRIS                     =0x1400; /* Norris Communications, Inc. */
+enum WAVE_FORMAT_SOUNDSPACE_MUSICOMPRESS    =0x1500; /* AT&T Labs, Inc. */
+enum WAVE_FORMAT_MPEG_ADTS_AAC              =0x1600; /* Microsoft Corporation */
+enum WAVE_FORMAT_MPEG_RAW_AAC               =0x1601; /* Microsoft Corporation */
+enum WAVE_FORMAT_MPEG_LOAS                  =0x1602; /* Microsoft Corporation (MPEG-4 Audio Transport Streams (LOAS/LATM) */
+enum WAVE_FORMAT_NOKIA_MPEG_ADTS_AAC        =0x1608; /* Microsoft Corporation */
+enum WAVE_FORMAT_NOKIA_MPEG_RAW_AAC         =0x1609; /* Microsoft Corporation */
+enum WAVE_FORMAT_VODAFONE_MPEG_ADTS_AAC     =0x160A; /* Microsoft Corporation */
+enum WAVE_FORMAT_VODAFONE_MPEG_RAW_AAC      =0x160B; /* Microsoft Corporation */
+enum WAVE_FORMAT_MPEG_HEAAC                 =0x1610; /* Microsoft Corporation (MPEG-2 AAC or MPEG-4 HE-AAC v1/v2 streams with any payload (ADTS, ADIF, LOAS/LATM, RAW). Format block includes MP4 AudioSpecificConfig() -- see HEAACWAVEFORMAT below */
+enum WAVE_FORMAT_DVM                        =0x2000; /* FAST Multimedia AG */
+enum WAVE_FORMAT_DTS2                       =0x2001;
+enum WAVE_FORMAT_EXTENSIBLE                 =0xFFFE; /* Microsoft */
+
+struct WAVEFORMATEXTENSIBLE {
+    WAVEFORMATEX    Format;
+    alias Format this;
+    union {
+        WORD wValidBitsPerSample;       /* bits of precision  */
+        WORD wSamplesPerBlock;          /* valid if wBitsPerSample==0 */
+        WORD wReserved;                 /* If neither applies, set to zero. */
+    }
+    DWORD           dwChannelMask;      /* which channels are */
+    /* present in stream  */
+    GUID            SubFormat;
+}
+
+
+const GUID MEDIASUBTYPE_IEEE_FLOAT = {0x00000003, 0x0000, 0x0010, [0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71]};
 

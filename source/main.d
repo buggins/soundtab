@@ -17,6 +17,10 @@ import soundtab.audio.utils;
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
 
+    auto hr = CoInitialize(null);
+    if (hr)
+        Log.e("CoInitialize failed");
+
     initAudio();
 
     // create window
