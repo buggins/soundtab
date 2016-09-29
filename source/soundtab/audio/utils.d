@@ -333,6 +333,46 @@ int[] genWaveTableSin() {
     return res;
 }
 
+class Osciller {
+    int[] _origWavetable;
+    int[] _wavetable;
+    int _phase; // *256
+    int _step;
+    this(int[] wavetable, int scale = WAVETABLE_SCALE, int offset = 0) {
+        _origWavetable = wavetable;
+        rescale(scale, offset);
+    }
+    void rescale(int scale = WAVETABLE_SCALE, int offset = 0) {
+        if (scale == WAVETABLE_SCALE && offset == 0) {
+            _wavetable = _origWavetable;
+        } else {
+            _wavetable = _origWavetable.dup;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                _wavetable[i] = _origWavetable[i] * scale / WAVETABLE_SCALE + offset;
+            }
+        }
+    }
+    void setStep(int step_mul_256) {
+        _step = step_mul_256;
+    }
+    /// set step based on pitch frequency (Hz) and samples per second
+    void setPitch(double freq, int samplesPerSecond) {
+        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
+    }
+    int step(int step_mul_256) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    // use current step value
+    int step() {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    void resetPhase() {
+        _phase = 0;
+    }
+}
+
 class MyAudioSource {
 
     private int _attack = 20;
@@ -377,9 +417,23 @@ class MyAudioSource {
     int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
     int _gain_mul_65536 = 0;
 
+    Osciller _vibrato1;
+    Osciller _vibrato2;
+    Osciller _vibrato3;
+    Osciller _vibrato4;
+    Osciller _tone1;
+    Osciller _tone2;
+    Osciller _tone3;
 
     this() {
         _wavetable = genWaveTableSin();
+        _vibrato1 = new Osciller(_wavetable, 500, 0x10000);
+        _vibrato2 = new Osciller(_wavetable, 600, 0x10000);
+        _vibrato3 = new Osciller(_wavetable, 700, 0x10000);
+        _vibrato4 = new Osciller(_wavetable, 1000, 0x10000);
+        _tone1 = new Osciller(_wavetable);
+        _tone2 = new Osciller(_wavetable);
+        _tone3 = new Osciller(_wavetable);
     }
 
     WAVEFORMATEXTENSIBLE _format;
@@ -402,6 +456,10 @@ class MyAudioSource {
         }
         _phase_mul_256 = 0;
         calcParams();
+        _vibrato1.setPitch(5, samplesPerSecond);
+        _vibrato2.setPitch(7.12367, samplesPerSecond);
+        _vibrato3.setPitch(9.37615263, samplesPerSecond);
+        _vibrato4.setPitch(3.78431, samplesPerSecond);
         return S_OK;
     }
     void calcParams() {
@@ -455,12 +513,19 @@ class MyAudioSource {
         for (int i = 0; i < frameCount; i++) {
             /// one step
             int gain = lastGain + (_gain_mul_65536 - lastGain) * i / frameCount;
-            _phase_mul_256 = (_phase_mul_256 + _step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-            int wt_value = _wavetable.ptr[_phase_mul_256 >> 8] * 2 / 3;
-            int wt_value2 = _wavetable.ptr[((_phase_mul_256 * 2)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 4;
-            int wt_value3 = _wavetable.ptr[((_phase_mul_256 * 3)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 5;
-            wt_value += wt_value2 + wt_value3;
+            gain = cast(int)((cast(long)gain * _vibrato4.step()) >> 16);
+            int step1 = cast(int)((cast(long)_step_mul_256 * _vibrato1.step()) >> 16);
+            int step2 = cast(int)((cast(long)_step_mul_256 * _vibrato2.step()) >> 16);
+            int step3 = cast(int)((cast(long)_step_mul_256 * _vibrato3.step()) >> 16);
+            int wt_value1 = _tone1.step(step1) * 2 / 3;
+            int wt_value2 = _tone2.step(step2) * 1 / 4;
+            int wt_value3 = _tone3.step(step3) * 1 / 5;
+            int wt_value = wt_value1 + wt_value2 + wt_value3;
             int sample = (wt_value * gain) >> 16;
+            if (sample < -32767)
+                sample = -32767;
+            else if (sample > 32767)
+                sample = 32767;
             if (sampleFormat == SampleFormat.float32) {
                 if (sample > 32768 || sample < -32767) {
                     Log.e("Sample out of bounds: ", sample, " gain=", gain);
