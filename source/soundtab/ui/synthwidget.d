@@ -7,6 +7,7 @@ import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.pitchwidget;
 import soundtab.ui.pressurewidget;
+import soundtab.audio.utils;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     SoundCanvas _soundCanvas;
@@ -14,9 +15,14 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     Tablet _tablet;
     PitchWidget _pitchWidget;
     PressureWidget _pressureWidget;
+    AudioPlayback _playback;
+    MyAudioSource _instrument;
 
     ~this() {
         _tablet.uninit();
+        if (_playback) {
+            destroy(_playback);
+        }
     }
 
     this(Tablet tablet) {
@@ -52,6 +58,11 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
+
+        _playback = new AudioPlayback();
+        _instrument = new MyAudioSource();
+        _playback.setSynth(_instrument);
+        _playback.start();
     }
 
     @property bool tabletInitialized() { return _tablet.isInitialized; }
@@ -59,17 +70,21 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     bool _proximity = false;
     void onPositionChange(double x, double y, double pressure, uint buttons) {
         _soundCanvas.setPosition(x, y, pressure);
-        _pitchWidget.setPitch(_soundCanvas._currentPitch);
+        _pitchWidget.setPitch(_soundCanvas.pitch);
         _pressureWidget.setPressure(pressure, _proximity);
+        _instrument.setSynthParams(_soundCanvas.pitch, pressure, y);
         invalidate();
         window.update();
     }
 
     void onProximity(bool enter) {
-        _proximity = enter;
-        _pressureWidget.setPressure(0, _proximity);
-        invalidate();
-        window.update();
+        if (_proximity != enter) {
+            _proximity = enter;
+            _pressureWidget.setPressure(0, _proximity);
+            _playback.paused = !enter;
+            invalidate();
+            window.update();
+        }
     }
 
 }

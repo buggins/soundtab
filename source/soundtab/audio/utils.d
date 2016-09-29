@@ -6,6 +6,7 @@ import core.sys.windows.objidl;
 import core.sys.windows.wtypes;
 import dlangui.core.logger;
 import std.string;
+import core.thread;
 
 
 wstring getWstringProp(IPropertyStore propStore, const ref PROPERTYKEY key) {
@@ -32,15 +33,22 @@ struct ComAutoPtr(T : IUnknown) {
     T ptr;
     alias ptr this;
     ref ComAutoPtr opAssign(T value) {
+        if (ptr)
+            clear();
         ptr = value;
         return this;
     }
     ~this() {
-        if (ptr)
-            ptr.Release();
+        clear();
     }
     @property bool isNull() {
         return !ptr;
+    }
+    void clear() {
+        if (ptr) {
+            ptr.Release();
+            ptr = null;
+        }
     }
 }
 
@@ -327,8 +335,26 @@ int[] genWaveTableSin() {
 
 class MyAudioSource {
 
+    void setSynthParams(double pitch, double gain, double controller1) {
+        if (pitch < 16)
+            pitch = 16;
+        if (pitch > 12000)
+            pitch = 12000;
+        if (gain < 0)
+            gain = 0;
+        if (gain > 1)
+            gain = 1;
+        if (controller1 < 0)
+            controller1 = 0;
+        if (controller1 > 1)
+            controller1 = 1;
+        _targetPitch = pitch;
+        _targetGain = gain;
+        //_target
+    }
+
     double _targetPitch = 1000; // Hz
-    double _targetGain = 0.5; // 0..1
+    double _targetGain = 0; // 0..1
     double _currentPitch = 0; // Hz
     double _currentGain = 0; // 0..1
 
@@ -369,6 +395,7 @@ class MyAudioSource {
             bitsPerSample = _format.wBitsPerSample;
             blockAlign = _format.nBlockAlign;
         }
+        _phase_mul_256 = 0;
         calcParams();
         return S_OK;
     }
@@ -392,7 +419,7 @@ class MyAudioSource {
     }
 
 
-    int durationCounter = 100;
+    //int durationCounter = 100;
 
     HRESULT LoadData(DWORD frameCount, BYTE * buf, ref DWORD flags) {
         calcParams();
@@ -403,7 +430,10 @@ class MyAudioSource {
         for (int i = 0; i < frameCount; i++) {
             /// one step
             _phase_mul_256 = (_phase_mul_256 + _step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-            int wt_value = _wavetable.ptr[_phase_mul_256 >> 8];
+            int wt_value = _wavetable.ptr[_phase_mul_256 >> 8] * 2 / 3;
+            int wt_value2 = _wavetable.ptr[((_phase_mul_256 * 2)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 4;
+            int wt_value3 = _wavetable.ptr[((_phase_mul_256 * 3)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 5;
+            wt_value += wt_value2 + wt_value3;
             int sample = (wt_value * _gain_mul_65536) >> 16;
             if (sampleFormat == SampleFormat.float32) {
                 floatConv.value = cast(float)(sample / 65536.0);
@@ -431,119 +461,210 @@ class MyAudioSource {
         }
 
         // TODO
-        durationCounter--;
-        flags = durationCounter <= 0 ? AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT : 0;
+        //durationCounter--;
+        flags = 0; //durationCounter <= 0 ? AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT : 0;
         return S_OK;
     }
 }
 
-bool initAudio() {
-    HRESULT hr;
-    MMDevices devices = new MMDevices();
-    if (!devices.init())
-        return false;
-    scope(exit) destroy(devices);
-
-    auto list = devices.getPlaybackDevices();
-    if (!list)
-        return false;
-    Log.d("Device list: ", list);
-
-    MyAudioSource pMySource = new MyAudioSource();
-
-    if (list.length > 0) {
-        ComAutoPtr!IMMEndpoint endpoint;
-        endpoint = devices.getEndpoint(list[0]);
-        if (endpoint) {
-            EDataFlow flow;
-            hr = endpoint.GetDataFlow(flow);
-            Log.d("Found endpoint with flow: ", flow);
+/// audio playback thread
+/// call start() to enable thread
+/// use paused property to pause thread
+class AudioPlayback : Thread {
+    this() {
+        super(&run);
+        _devices = new MMDevices();
+        _devices.init();
+        MMDevice[] devices = getDevices();
+        if (devices.length > 0)
+            setDevice(devices[0]);
+    }
+    ~this() {
+        stop();
+        if (_devices) {
+            destroy(_devices);
+            _devices = null;
         }
-        ComAutoPtr!IAudioClient audioClient;
-        audioClient = devices.getAudioClient(list[0].id);
-        if (audioClient) {
-            UINT32 bufferSize;
-            REFERENCE_TIME streamLatency;
-            WAVEFORMATEX * mixFormat;
-            WAVEFORMATEXTENSIBLE * mixFormatEx;
-            hr = audioClient.GetMixFormat(mixFormat);
-            REFERENCE_TIME defaultDevicePeriod, minimumDevicePeriod;
-            if (mixFormat) {
-                Log.d("Mix format tag=", mixFormat.wFormatTag, " channels=", mixFormat.nChannels, " nSamplesPerSec=", mixFormat.nSamplesPerSec, " bitsPerSample=", mixFormat.wBitsPerSample);
-                if (mixFormat.wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
-                    mixFormatEx = cast(WAVEFORMATEXTENSIBLE*)mixFormat;
-                    Log.d("Extensible format, guid = ", mixFormatEx.SubFormat);
-                    if (mixFormatEx.SubFormat == MEDIASUBTYPE_IEEE_FLOAT)
-                        Log.d("This is IEEE_FLOAT format!");
-                }
-                //WAVE_FORMAT_PCM WAVE_FORMAT_IEEE_FLOAT WAVE_FORMAT_EXTENSIBLE
-                //WAVE_FORMAT_IEEE_FLOAT;
+    }
+    private MyAudioSource _synth;
+    private MMDevices _devices;
+    void setSynth(MyAudioSource synth) {
+        _synth = synth;
+    }
+    private bool _running;
+    private bool _paused;
+    private bool _stopped;
+
+    private MMDevice _requestedDevice;
+    /// sets active device
+    private void setDevice(MMDevice device) {
+        _requestedDevice = device;
+    }
+    private MMDevice _currentDevice;
+
+    /// returns list of available devices, default is first
+    MMDevice[] getDevices() {
+        return _devices.getPlaybackDevices();
+    }
+
+    /// returns true if playback thread is running
+    @property bool running() { return _running; }
+    /// get pause status
+    @property bool paused() { return _paused; }
+    /// play/stop
+    @property void paused(bool pausedFlag) {
+        if (_paused != pausedFlag) {
+            _paused = pausedFlag;
+            sleep(dur!"msecs"(10));
+        }
+    }
+
+    void stop() {
+        if (_running) {
+            _stopped = true;
+            while (_running)
+                sleep(dur!"msecs"(10));
+            join(false);
+            _running = false;
+        }
+    }
+
+    private ComAutoPtr!IAudioClient _audioClient;
+
+
+    /// returns true if hr is error
+    private bool checkError(HRESULT hr, string msg = "AUDIO ERROR") {
+        if (hr) {
+            Log.e(msg, " hresult=", "%08x".format(hr), " lastError=", GetLastError());
+            return true;
+        }
+        return false;
+    }
+
+    private void playbackForDevice(MMDevice dev) {
+        Log.d("playbackForDevice ", dev);
+        MyAudioSource pMySource = _synth;
+        if (!pMySource)
+            return;
+        if (!_currentDevice || _currentDevice.id != dev.id || _audioClient.isNull) {
+            // setting new device
+            _audioClient = _devices.getAudioClient(dev.id);
+            if (_audioClient.isNull) {
+                sleep(dur!"msecs"(10));
+                return;
             }
-            const REFTIMES_PER_SEC = 100000000; //10000000;
-            const REFTIMES_PER_MILLISEC = REFTIMES_PER_SEC / 1000;
-            REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
-            hr = audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
-            Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
-            hr = audioClient.Initialize(
+            _currentDevice = dev;
+        }
+        if (_audioClient.isNull || _paused || _stopped)
+            return;
+        // current device is selected
+        UINT32 bufferSize;
+        REFERENCE_TIME defaultDevicePeriod, minimumDevicePeriod;
+        REFERENCE_TIME streamLatency;
+        WAVEFORMATEX * mixFormat;
+        HRESULT hr;
+        hr = _audioClient.GetMixFormat(mixFormat);
+        const REFTIMES_PER_SEC = 10000000; //10000000;
+        const REFTIMES_PER_MILLISEC = REFTIMES_PER_SEC / 1000;
+        //REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
+        hr = _audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
+        Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
+        hr = _audioClient.Initialize(
                 AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
-                //AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_EXCLUSIVE,
                 0,
                 minimumDevicePeriod, //hnsRequestedDuration,
                 0, //hnsRequestedDuration, // 0
                 mixFormat,
                 null);
+        if (checkError(hr, "AudioClient.Initialize failed")) return;
 
-            UINT32 bufferFrameCount;
+        UINT32 bufferFrameCount;
 
-            hr = pMySource.SetFormat(mixFormat);
+        hr = pMySource.SetFormat(mixFormat);
 
-
-            hr = audioClient.GetBufferSize(bufferFrameCount);
-            Log.d("Buffer frame count: ", bufferFrameCount);
-            hr = audioClient.GetStreamLatency(streamLatency);
-            hr = audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
-            Log.d("Found audio client with bufferSize=", bufferFrameCount, " latency=", streamLatency, " defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
-            ComAutoPtr!IAudioRenderClient pRenderClient;
-            hr = audioClient.GetService(
+        hr = _audioClient.GetBufferSize(bufferFrameCount);
+        if (checkError(hr, "AudioClient.GetBufferSize failed")) return;
+        Log.d("Buffer frame count: ", bufferFrameCount);
+        hr = _audioClient.GetStreamLatency(streamLatency);
+        if (checkError(hr, "AudioClient.GetStreamLatency failed")) return;
+        hr = _audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
+        if (checkError(hr, "AudioClient.GetDevicePeriod failed")) return;
+        Log.d("Found audio client with bufferSize=", bufferFrameCount, " latency=", streamLatency, " defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
+        ComAutoPtr!IAudioRenderClient pRenderClient;
+        hr = _audioClient.GetService(
                 IID_IAudioRenderClient,
                 cast(void**)&pRenderClient.ptr);
-            // Grab the entire buffer for the initial fill operation.
-            BYTE *pData;
-            DWORD flags;
-            hr = pRenderClient.GetBuffer(bufferFrameCount, pData);
-            hr = pMySource.LoadData(bufferFrameCount, pData, flags);
-            hr = pRenderClient.ReleaseBuffer(bufferFrameCount, flags);
-            // Calculate the actual duration of the allocated buffer.
-            REFERENCE_TIME hnsActualDuration;
-            hnsActualDuration = cast(long)REFTIMES_PER_SEC * bufferFrameCount / mixFormat.nSamplesPerSec;
-            hr = audioClient.Start();  // Start playing.
-            // Each loop fills about half of the shared buffer.
-            while (flags != AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT)
-            {
-                UINT32 numFramesAvailable;
-                UINT32 numFramesPadding;
-                // Sleep for half the buffer duration.
-                Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
-
-                // See how much buffer space is available.
-                hr = audioClient.GetCurrentPadding(numFramesPadding);
-
-                numFramesAvailable = bufferFrameCount - numFramesPadding;
-
-                // Grab all the available space in the shared buffer.
-                hr = pRenderClient.GetBuffer(numFramesAvailable, pData);
-
-                // Get next 1/2-second of data from the audio source.
-                hr = pMySource.LoadData(numFramesAvailable, pData, flags);
-
-                hr = pRenderClient.ReleaseBuffer(numFramesAvailable, flags);
-            }
-            // Wait for last data in buffer to play before stopping.
+        if (checkError(hr, "AudioClient.GetService failed")) return;
+        // Grab the entire buffer for the initial fill operation.
+        BYTE *pData;
+        DWORD flags;
+        hr = pRenderClient.GetBuffer(bufferFrameCount, pData);
+        if (checkError(hr, "RenderClient.GetBuffer failed")) return;
+        hr = pMySource.LoadData(bufferFrameCount, pData, flags);
+        hr = pRenderClient.ReleaseBuffer(bufferFrameCount, flags);
+        if (checkError(hr, "pRenderClient.ReleaseBuffer failed")) return;
+        // Calculate the actual duration of the allocated buffer.
+        REFERENCE_TIME hnsActualDuration;
+        hnsActualDuration = cast(long)REFTIMES_PER_SEC * bufferFrameCount / mixFormat.nSamplesPerSec;
+        hr = _audioClient.Start();  // Start playing.
+        if (checkError(hr, "audioClient.Start() failed")) return;
+        // Each loop fills about half of the shared buffer.
+        while (flags != AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT)
+        {
+            if (_paused || _stopped)
+                break;
+            UINT32 numFramesAvailable;
+            UINT32 numFramesPadding;
+            // Sleep for half the buffer duration.
             Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
-            hr = audioClient.Stop();
 
+            // See how much buffer space is available.
+            hr = _audioClient.GetCurrentPadding(numFramesPadding);
+            if (checkError(hr, "audioClient.GetCurrentPadding() failed")) break;
+
+            numFramesAvailable = bufferFrameCount - numFramesPadding;
+
+            // Grab all the available space in the shared buffer.
+            hr = pRenderClient.GetBuffer(numFramesAvailable, pData);
+            if (checkError(hr, "RenderClient.GetBuffer() failed")) break;
+
+            // Get next 1/2-second of data from the audio source.
+            hr = pMySource.LoadData(numFramesAvailable, pData, flags);
+
+            hr = pRenderClient.ReleaseBuffer(numFramesAvailable, flags);
+            if (checkError(hr, "RenderClient.ReleaseBuffer() failed")) break;
         }
+        // Wait for last data in buffer to play before stopping.
+        Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
+        hr = _audioClient.Stop();
+        if (checkError(hr, "audioClient.Stop() failed")) return;
     }
 
-    return true;
+    private void run() {
+        _running = true;
+        auto hr = CoInitialize(null);
+        try {
+            while (!_stopped) {
+                MMDevice dev;
+                while (!dev && !_stopped) {
+                    dev = _requestedDevice;
+                    if (dev)
+                        break;
+                    // waiting for device is set
+                    sleep(dur!"msecs"(10));
+                }
+                if (_paused) {
+                    sleep(dur!"msecs"(10));
+                    continue;
+                }
+                if (_stopped)
+                    break;
+                playbackForDevice(dev);
+                _audioClient.clear();
+            }
+        } catch (Exception e) {
+            Log.e("Exception in playback thread");
+        }
+        _running = false;
+    }
 }

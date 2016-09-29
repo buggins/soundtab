@@ -36,6 +36,8 @@ class SoundCanvas : Widget {
         _maxPitch = fromLogScale(_maxNote);
     }
 
+    @property double pitch() { return _currentPitch; }
+    @property double controller1() { return _currentY; }
     void setPosition(double x, double y, double pressure) {
         double note = _minNote + (_maxNote - _minNote) * x;
         _currentPitch = fromLogScale(note);

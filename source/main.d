@@ -21,7 +21,7 @@ extern (C) int UIAppMain(string[] args) {
     if (hr)
         Log.e("CoInitialize failed");
 
-    initAudio();
+    //initAudio();
 
     // create window
     Log.d("Creating window");
