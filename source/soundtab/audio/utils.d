@@ -333,6 +333,19 @@ int[] genWaveTableSin() {
     return res;
 }
 
+int[] genWaveTableSquare() {
+    import std.math;
+    int[] res;
+    res.length = WAVETABLE_SIZE;
+    for (int i = 0; i < WAVETABLE_SIZE; i++) {
+        if (i < WAVETABLE_SIZE / 2)
+            res[i] = WAVETABLE_SCALE;
+        else
+            res[i] = -WAVETABLE_SCALE;
+    }
+    return res;
+}
+
 class Osciller {
     int[] _origWavetable;
     int[] _wavetable;
@@ -421,19 +434,35 @@ class MyAudioSource {
     Osciller _vibrato2;
     Osciller _vibrato3;
     Osciller _vibrato4;
+    Osciller _vibrato21;
+    Osciller _vibrato22;
+    Osciller _vibrato23;
+    Osciller _vibrato24;
     Osciller _tone1;
     Osciller _tone2;
     Osciller _tone3;
+    Osciller _tone21;
+    Osciller _tone22;
+    Osciller _tone23;
 
     this() {
-        _wavetable = genWaveTableSin();
-        _vibrato1 = new Osciller(_wavetable, 500, 0x10000);
-        _vibrato2 = new Osciller(_wavetable, 600, 0x10000);
-        _vibrato3 = new Osciller(_wavetable, 700, 0x10000);
-        _vibrato4 = new Osciller(_wavetable, 1000, 0x10000);
+        int[] sintable = genWaveTableSin();
+        _wavetable = sintable; //genWaveTableSquare(); //genWaveTableSin();
+        //_wavetable = genWaveTableSquare(); //genWaveTableSin();
+        _vibrato1 = new Osciller(sintable, 500, 0x10000);
+        _vibrato2 = new Osciller(sintable, 600, 0x10000);
+        _vibrato3 = new Osciller(sintable, 700, 0x10000);
+        _vibrato4 = new Osciller(sintable, 1000, 0x10000);
+        _vibrato21 = new Osciller(sintable, 700, 0x10000);
+        _vibrato22 = new Osciller(sintable, 800, 0x10000);
+        _vibrato23 = new Osciller(sintable, 900, 0x10000);
+        _vibrato24 = new Osciller(sintable, 700, 0x10000);
         _tone1 = new Osciller(_wavetable);
         _tone2 = new Osciller(_wavetable);
         _tone3 = new Osciller(_wavetable);
+        _tone21 = new Osciller(_wavetable);
+        _tone22 = new Osciller(_wavetable);
+        _tone23 = new Osciller(_wavetable);
     }
 
     WAVEFORMATEXTENSIBLE _format;
@@ -460,6 +489,10 @@ class MyAudioSource {
         _vibrato2.setPitch(7.12367, samplesPerSecond);
         _vibrato3.setPitch(9.37615263, samplesPerSecond);
         _vibrato4.setPitch(3.78431, samplesPerSecond);
+        _vibrato21.setPitch(4.65321, samplesPerSecond);
+        _vibrato22.setPitch(6.5432, samplesPerSecond);
+        _vibrato23.setPitch(11.4321, samplesPerSecond);
+        _vibrato24.setPitch(7.36345, samplesPerSecond);
         return S_OK;
     }
     void calcParams() {
@@ -513,42 +546,62 @@ class MyAudioSource {
         for (int i = 0; i < frameCount; i++) {
             /// one step
             int gain = lastGain + (_gain_mul_65536 - lastGain) * i / frameCount;
-            gain = cast(int)((cast(long)gain * _vibrato4.step()) >> 16);
+            int gain_vibrato = _vibrato4.step();
+
+            int gain1 = cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
+            int gain2 = cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
+
             int step1 = cast(int)((cast(long)_step_mul_256 * _vibrato1.step()) >> 16);
             int step2 = cast(int)((cast(long)_step_mul_256 * _vibrato2.step()) >> 16);
             int step3 = cast(int)((cast(long)_step_mul_256 * _vibrato3.step()) >> 16);
-            int wt_value1 = _tone1.step(step1) * 2 / 3;
-            int wt_value2 = _tone2.step(step2) * 1 / 4;
-            int wt_value3 = _tone3.step(step3) * 1 / 5;
-            int wt_value = wt_value1 + wt_value2 + wt_value3;
-            int sample = (wt_value * gain) >> 16;
-            if (sample < -32767)
-                sample = -32767;
-            else if (sample > 32767)
-                sample = 32767;
+
+            int step21 = cast(int)((cast(long)_step_mul_256 * _vibrato21.step()) >> 16);
+            int step22 = cast(int)((cast(long)_step_mul_256 * _vibrato22.step()) >> 16);
+            int step23 = cast(int)((cast(long)_step_mul_256 * _vibrato23.step()) >> 16);
+
+            int wt_value1 = _tone1.step(step1) * 1 / 1;
+            int wt_value2 = _tone2.step(step2) * 1 / 2;
+            int wt_value3 = _tone3.step(step3) * 1 / 3;
+
+            int wt_value21 = _tone1.step(step21) * 1 / 1;
+            int wt_value22 = _tone2.step(step22) * 1 / 2;
+            int wt_value23 = _tone3.step(step23) * 1 / 3;
+
+            int wt_value_1 = wt_value1 + wt_value2 + wt_value3;
+            int wt_value_2 = wt_value21 + wt_value22 + wt_value23;
+
+            int sample1 = (wt_value_1 * gain1) >> 16;
+            int sample2 = (wt_value_2 * gain2) >> 16;
+            if (sample1 < -32767)
+                sample1 = -32767;
+            else if (sample1 > 32767)
+                sample1 = 32767;
+            if (sample2 < -32767)
+                sample2 = -32767;
+            else if (sample2 > 32767)
+                sample2 = 32767;
             if (sampleFormat == SampleFormat.float32) {
-                if (sample > 32768 || sample < -32767) {
-                    Log.e("Sample out of bounds: ", sample, " gain=", gain);
-                }
-                floatConv.value = cast(float)(sample / 65536.0);
+                floatConv.value = cast(float)(sample1 / 65536.0);
                 buf[0] = floatConv.bytes.ptr[0];
                 buf[1] = floatConv.bytes.ptr[1];
                 buf[2] = floatConv.bytes.ptr[2];
                 buf[3] = floatConv.bytes.ptr[3];
                 if (channels > 1) {
-                    buf[4] = floatConv.bytes.ptr[4];
-                    buf[5] = floatConv.bytes.ptr[5];
-                    buf[6] = floatConv.bytes.ptr[6];
-                    buf[7] = floatConv.bytes.ptr[7];
+                    floatConv.value = cast(float)(sample2 / 65536.0);
+                    buf[4] = floatConv.bytes.ptr[0];
+                    buf[5] = floatConv.bytes.ptr[1];
+                    buf[6] = floatConv.bytes.ptr[2];
+                    buf[7] = floatConv.bytes.ptr[3];
                 }
                 // TODO: more channels
             } else {
-                shortConv.value = cast(short)(sample);
+                shortConv.value = cast(short)(sample1);
                 buf[0] = floatConv.bytes.ptr[0];
                 buf[1] = floatConv.bytes.ptr[1];
                 if (channels > 1) {
-                    buf[2] = floatConv.bytes.ptr[2];
-                    buf[3] = floatConv.bytes.ptr[3];
+                    shortConv.value = cast(short)(sample2);
+                    buf[2] = floatConv.bytes.ptr[0];
+                    buf[3] = floatConv.bytes.ptr[1];
                 }
             }
             buf += blockAlign;

@@ -9,8 +9,8 @@ import dlangui.core.events;
 
 class SoundCanvas : Widget {
 
-    double _minPitch = 440.0 / 3;
-    double _maxPitch = 440.0 * 2;
+    double _minPitch = 440.0 / 8;
+    double _maxPitch = 440.0 * 8;
     double _minNote;
     double _maxNote;
 
@@ -71,7 +71,7 @@ class SoundCanvas : Widget {
         Log.d("fromLogScale(12)=", fromLogScale(12));
         
         //*/
-        setNoteRange(-12, 12);
+        setNoteRange(-36, 36);
         trackHover = true;
         clickable = true;
 
