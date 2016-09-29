@@ -335,6 +335,9 @@ int[] genWaveTableSin() {
 
 class MyAudioSource {
 
+    private int _attack = 20;
+    private int _release = 40;
+
     void setSynthParams(double pitch, double gain, double controller1) {
         if (pitch < 16)
             pitch = 16;
@@ -369,6 +372,8 @@ class MyAudioSource {
 
     int _phase_mul_256 = 0;
 
+    int _target_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
+    int _target_gain_mul_65536 = 0;
     int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
     int _gain_mul_65536 = 0;
 
@@ -404,8 +409,8 @@ class MyAudioSource {
         _currentGain = _targetGain;
         double onePeriodSamples = samplesPerSecond / _currentPitch;
         double step = WAVETABLE_SIZE / onePeriodSamples;
-        _step_mul_256 = cast(int)(step * 256);
-        _gain_mul_65536 = cast(int)(_currentGain * 0x10000);
+        _target_step_mul_256 = cast(int)(step * 256);
+        _target_gain_mul_65536 = cast(int)(_currentGain * 0x10000);
     }
 
     static union ShortConv {
@@ -421,21 +426,45 @@ class MyAudioSource {
 
     //int durationCounter = 100;
 
-    HRESULT LoadData(DWORD frameCount, BYTE * buf, ref DWORD flags) {
+    HRESULT LoadData(int frameCount, BYTE * buf, ref DWORD flags) {
         calcParams();
-        Log.d("LoadData frameCount=", frameCount);
+        
+        int frameMillis = frameCount < 10 ? 10 : 1000 * frameCount / samplesPerSecond;
+        _step_mul_256 = _target_step_mul_256;
+        int lastGain = _gain_mul_65536;
+        if (_gain_mul_65536 < _target_gain_mul_65536) {
+            // attack
+            if (frameMillis > _attack)
+                _gain_mul_65536 = _target_gain_mul_65536;
+            else {
+                _gain_mul_65536 = _gain_mul_65536 + (_target_gain_mul_65536 - _gain_mul_65536) * frameMillis / _attack;
+            }
+        } else {
+            // release
+            if (frameMillis > _release)
+                _gain_mul_65536 = _target_gain_mul_65536;
+            else {
+                _gain_mul_65536 = _gain_mul_65536 + (_target_gain_mul_65536 - _gain_mul_65536) * frameMillis / _release;
+            }
+        }
+
+        Log.d("LoadData frameCount=", frameCount, " lastGain=", lastGain, " newGain=", _gain_mul_65536);
         ShortConv shortConv;
         FloatConv floatConv;
 
         for (int i = 0; i < frameCount; i++) {
             /// one step
+            int gain = lastGain + (_gain_mul_65536 - lastGain) * i / frameCount;
             _phase_mul_256 = (_phase_mul_256 + _step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
             int wt_value = _wavetable.ptr[_phase_mul_256 >> 8] * 2 / 3;
             int wt_value2 = _wavetable.ptr[((_phase_mul_256 * 2)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 4;
             int wt_value3 = _wavetable.ptr[((_phase_mul_256 * 3)&WAVETABLE_SIZE_MASK_MUL_256) >> 8] / 5;
             wt_value += wt_value2 + wt_value3;
-            int sample = (wt_value * _gain_mul_65536) >> 16;
+            int sample = (wt_value * gain) >> 16;
             if (sampleFormat == SampleFormat.float32) {
+                if (sample > 32768 || sample < -32767) {
+                    Log.e("Sample out of bounds: ", sample, " gain=", gain);
+                }
                 floatConv.value = cast(float)(sample / 65536.0);
                 buf[0] = floatConv.bytes.ptr[0];
                 buf[1] = floatConv.bytes.ptr[1];
