@@ -306,34 +306,133 @@ enum SampleFormat {
     float32
 }
 
+immutable WAVETABLE_SIZE_BITS = 14;
+immutable WAVETABLE_SIZE = 1 << WAVETABLE_SIZE_BITS;
+immutable WAVETABLE_SIZE_MASK = WAVETABLE_SIZE - 1;
+immutable WAVETABLE_SIZE_MASK_MUL_256 = (1 << (WAVETABLE_SIZE_BITS + 8)) - 1;
+immutable WAVETABLE_SCALE_BITS = 14;
+immutable WAVETABLE_SCALE = (1 << WAVETABLE_SCALE_BITS);
+
+int[] genWaveTableSin() {
+    import std.math;
+    int[] res;
+    res.length = WAVETABLE_SIZE;
+    for (int i = 0; i < WAVETABLE_SIZE; i++) {
+        double f = i * 2 * PI / WAVETABLE_SIZE;
+        double v = sin(f);
+        res[i] = cast(int)(v * WAVETABLE_SCALE);
+    }
+    return res;
+}
+
 class MyAudioSource {
 
+    double _targetPitch = 1000; // Hz
+    double _targetGain = 0.5; // 0..1
     double _currentPitch = 0; // Hz
     double _currentGain = 0; // 0..1
 
     int samplesPerSecond = 44100;
     int channels = 2;
+    int bitsPerSample = 16;
+    int blockAlign = 4;
+
     SampleFormat sampleFormat = SampleFormat.float32;
 
-    int phase = 0;
+    int[] _wavetable;
+
+    int _phase_mul_256 = 0;
+
+    int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
+    int _gain_mul_65536 = 0;
+
+
+    this() {
+        _wavetable = genWaveTableSin();
+    }
 
     WAVEFORMATEXTENSIBLE _format;
     HRESULT SetFormat(WAVEFORMATEX * fmt) {
-        channels = _format.nChannels;
-        samplesPerSecond = _format.nSamplesPerSec;
         if (fmt.wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
             WAVEFORMATEXTENSIBLE * formatEx = cast(WAVEFORMATEXTENSIBLE*)fmt;
             _format = *formatEx;
             sampleFormat = (_format.SubFormat == MEDIASUBTYPE_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
+            channels = _format.nChannels;
+            samplesPerSecond = _format.nSamplesPerSec;
+            bitsPerSample = _format.wBitsPerSample;
+            blockAlign = _format.nBlockAlign;
         } else {
             _format = *fmt;
             sampleFormat = (_format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
+            channels = _format.nChannels;
+            samplesPerSecond = _format.nSamplesPerSec;
+            bitsPerSample = _format.wBitsPerSample;
+            blockAlign = _format.nBlockAlign;
         }
+        calcParams();
         return S_OK;
     }
+    void calcParams() {
+        _currentPitch = _targetPitch;
+        _currentGain = _targetGain;
+        double onePeriodSamples = samplesPerSecond / _currentPitch;
+        double step = WAVETABLE_SIZE / onePeriodSamples;
+        _step_mul_256 = cast(int)(step * 256);
+        _gain_mul_65536 = cast(int)(_currentGain * 0x10000);
+    }
+
+    static union ShortConv {
+        short value;
+        byte[2] bytes;
+    }
+
+    static union FloatConv {
+        float value;
+        byte[4] bytes;
+    }
+
+
+    int durationCounter = 100;
+
     HRESULT LoadData(DWORD frameCount, BYTE * buf, ref DWORD flags) {
+        calcParams();
+        Log.d("LoadData frameCount=", frameCount);
+        ShortConv shortConv;
+        FloatConv floatConv;
+
+        for (int i = 0; i < frameCount; i++) {
+            /// one step
+            _phase_mul_256 = (_phase_mul_256 + _step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+            int wt_value = _wavetable.ptr[_phase_mul_256 >> 8];
+            int sample = (wt_value * _gain_mul_65536) >> 16;
+            if (sampleFormat == SampleFormat.float32) {
+                floatConv.value = cast(float)(sample / 65536.0);
+                buf[0] = floatConv.bytes.ptr[0];
+                buf[1] = floatConv.bytes.ptr[1];
+                buf[2] = floatConv.bytes.ptr[2];
+                buf[3] = floatConv.bytes.ptr[3];
+                if (channels > 1) {
+                    buf[4] = floatConv.bytes.ptr[4];
+                    buf[5] = floatConv.bytes.ptr[5];
+                    buf[6] = floatConv.bytes.ptr[6];
+                    buf[7] = floatConv.bytes.ptr[7];
+                }
+                // TODO: more channels
+            } else {
+                shortConv.value = cast(short)(sample);
+                buf[0] = floatConv.bytes.ptr[0];
+                buf[1] = floatConv.bytes.ptr[1];
+                if (channels > 1) {
+                    buf[2] = floatConv.bytes.ptr[2];
+                    buf[3] = floatConv.bytes.ptr[3];
+                }
+            }
+            buf += blockAlign;
+        }
+
         // TODO
-        flags = AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT;
+        durationCounter--;
+        flags = durationCounter <= 0 ? AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT : 0;
         return S_OK;
     }
 }
@@ -380,14 +479,17 @@ bool initAudio() {
                 //WAVE_FORMAT_PCM WAVE_FORMAT_IEEE_FLOAT WAVE_FORMAT_EXTENSIBLE
                 //WAVE_FORMAT_IEEE_FLOAT;
             }
-            const REFTIMES_PER_SEC = 10000000;
-            const REFTIMES_PER_MILLISEC = 10000;
+            const REFTIMES_PER_SEC = 100000000; //10000000;
+            const REFTIMES_PER_MILLISEC = REFTIMES_PER_SEC / 1000;
             REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
+            hr = audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
+            Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
             hr = audioClient.Initialize(
                 AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
+                //AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_EXCLUSIVE,
                 0,
-                hnsRequestedDuration,
-                0,
+                minimumDevicePeriod, //hnsRequestedDuration,
+                0, //hnsRequestedDuration, // 0
                 mixFormat,
                 null);
 
@@ -395,7 +497,9 @@ bool initAudio() {
 
             hr = pMySource.SetFormat(mixFormat);
 
+
             hr = audioClient.GetBufferSize(bufferFrameCount);
+            Log.d("Buffer frame count: ", bufferFrameCount);
             hr = audioClient.GetStreamLatency(streamLatency);
             hr = audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
             Log.d("Found audio client with bufferSize=", bufferFrameCount, " latency=", streamLatency, " defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
