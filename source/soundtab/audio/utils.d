@@ -404,15 +404,23 @@ class MyAudioSource {
             controller1 = 0;
         if (controller1 > 1)
             controller1 = 1;
+        // lower part of tablet should be sine
+        if (controller1 < 0.9)
+            controller1 /= 0.9;
+        else
+            controller1 = 1;
         _targetPitch = pitch;
         _targetGain = gain;
+        _targetController1 = controller1;
         //_target
     }
 
     double _targetPitch = 1000; // Hz
     double _targetGain = 0; // 0..1
+    double _targetController1 = 0;
     double _currentPitch = 0; // Hz
     double _currentGain = 0; // 0..1
+    double _currentController1 = 0; // 0..1
 
     int samplesPerSecond = 44100;
     int channels = 2;
@@ -427,8 +435,10 @@ class MyAudioSource {
 
     int _target_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
     int _target_gain_mul_65536 = 0;
+    int _target_controller1_mul_65536 = 0;
     int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
     int _gain_mul_65536 = 0;
+    int _controller1_mul_65536 = 0;
 
     Osciller _vibrato1;
     Osciller _vibrato2;
@@ -441,12 +451,15 @@ class MyAudioSource {
     Osciller _tone1;
     Osciller _tone2;
     Osciller _tone3;
+    Osciller _tone4;
     Osciller _tone21;
     Osciller _tone22;
     Osciller _tone23;
+    Osciller _tone24;
 
     this() {
         int[] sintable = genWaveTableSin();
+        int[] square = genWaveTableSquare();
         _wavetable = sintable; //genWaveTableSquare(); //genWaveTableSin();
         //_wavetable = genWaveTableSquare(); //genWaveTableSin();
         _vibrato1 = new Osciller(sintable, 500, 0x10000);
@@ -460,9 +473,11 @@ class MyAudioSource {
         _tone1 = new Osciller(_wavetable);
         _tone2 = new Osciller(_wavetable);
         _tone3 = new Osciller(_wavetable);
+        _tone4 = new Osciller(_wavetable);
         _tone21 = new Osciller(_wavetable);
         _tone22 = new Osciller(_wavetable);
         _tone23 = new Osciller(_wavetable);
+        _tone24 = new Osciller(_wavetable);
     }
 
     WAVEFORMATEXTENSIBLE _format;
@@ -498,10 +513,12 @@ class MyAudioSource {
     void calcParams() {
         _currentPitch = _targetPitch;
         _currentGain = _targetGain;
+        _currentController1 = _targetController1;
         double onePeriodSamples = samplesPerSecond / _currentPitch;
         double step = WAVETABLE_SIZE / onePeriodSamples;
         _target_step_mul_256 = cast(int)(step * 256);
         _target_gain_mul_65536 = cast(int)(_currentGain * 0x10000);
+        _target_controller1_mul_65536 = cast(int)(_currentController1 * 0x10000);
     }
 
     static union ShortConv {
@@ -521,8 +538,13 @@ class MyAudioSource {
         calcParams();
         
         int frameMillis = frameCount < 10 ? 10 : 1000 * frameCount / samplesPerSecond;
-        _step_mul_256 = _target_step_mul_256;
+
         int lastGain = _gain_mul_65536;
+        int lastController1 = _controller1_mul_65536;
+
+        _step_mul_256 = _target_step_mul_256;
+        _controller1_mul_65536 = _target_controller1_mul_65536;
+
         if (_gain_mul_65536 < _target_gain_mul_65536) {
             // attack
             if (frameMillis > _attack)
@@ -546,6 +568,7 @@ class MyAudioSource {
         for (int i = 0; i < frameCount; i++) {
             /// one step
             int gain = lastGain + (_gain_mul_65536 - lastGain) * i / frameCount;
+            int controller1 = lastController1 + (_controller1_mul_65536 - lastController1) * i / frameCount;
             int gain_vibrato = _vibrato4.step();
 
             int gain1 = cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
@@ -554,21 +577,26 @@ class MyAudioSource {
             int step1 = cast(int)((cast(long)_step_mul_256 * _vibrato1.step()) >> 16);
             int step2 = cast(int)((cast(long)_step_mul_256 * _vibrato2.step()) >> 16);
             int step3 = cast(int)((cast(long)_step_mul_256 * _vibrato3.step()) >> 16);
+            int step4 = cast(int)((cast(long)_step_mul_256 * _vibrato4.step()) >> 16);
 
             int step21 = cast(int)((cast(long)_step_mul_256 * _vibrato21.step()) >> 16);
             int step22 = cast(int)((cast(long)_step_mul_256 * _vibrato22.step()) >> 16);
             int step23 = cast(int)((cast(long)_step_mul_256 * _vibrato23.step()) >> 16);
+            int step24 = cast(int)((cast(long)_step_mul_256 * _vibrato24.step()) >> 16);
 
             int wt_value1 = _tone1.step(step1) * 1 / 1;
             int wt_value2 = _tone2.step(step2) * 1 / 2;
             int wt_value3 = _tone3.step(step3) * 1 / 3;
+            int wt_value4 = _tone4.step(step3) * 1 / 3;
 
             int wt_value21 = _tone1.step(step21) * 1 / 1;
             int wt_value22 = _tone2.step(step22) * 1 / 2;
             int wt_value23 = _tone3.step(step23) * 1 / 3;
+            int wt_value24 = _tone3.step(step23) * 1 / 3;
 
-            int wt_value_1 = wt_value1 + wt_value2 + wt_value3;
-            int wt_value_2 = wt_value21 + wt_value22 + wt_value23;
+            int inv_controller1 = 0x10000 - controller1;
+            int wt_value_1 = ((wt_value1 + wt_value2 + wt_value3) * inv_controller1 >> 16) + (wt_value4 * controller1 >> 16);
+            int wt_value_2 = ((wt_value21 + wt_value22 + wt_value23) * inv_controller1 >> 16) + (wt_value24 * controller1 >> 16);
 
             int sample1 = (wt_value_1 * gain1) >> 16;
             int sample2 = (wt_value_2 * gain2) >> 16;
@@ -719,7 +747,7 @@ class AudioPlayback : Thread {
         hr = _audioClient.Initialize(
                 AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
                 0,
-                minimumDevicePeriod, //hnsRequestedDuration,
+                defaultDevicePeriod, //minimumDevicePeriod, //hnsRequestedDuration,
                 0, //hnsRequestedDuration, // 0
                 mixFormat,
                 null);
@@ -790,6 +818,7 @@ class AudioPlayback : Thread {
     private void run() {
         _running = true;
         auto hr = CoInitialize(null);
+        priority = PRIORITY_MAX;
         try {
             while (!_stopped) {
                 MMDevice dev;
