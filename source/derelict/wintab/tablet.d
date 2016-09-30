@@ -22,7 +22,14 @@ class Tablet {
     private HWND _hWnd;
     /// returns true if initialized
     @property bool isInitialized() {
-        return !(_hCtx is null) && glogContext.lcStatus != 0;
+        if (_hCtx is null)
+            return false;
+        uint numDevices;
+        if (!WTInfo(WTI_INTERFACE, IFC_NDEVICES, cast(void*)&numDevices))
+            return false;
+        if (!numDevices)
+            return false;
+        return _proximity;
     }
     /// initialize tablet API for window
     bool init(HWND hWnd) {
