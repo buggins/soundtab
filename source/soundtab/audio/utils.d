@@ -413,8 +413,10 @@ class AudioPlayback : Thread {
     }
 
     private void playbackForDevice(MMDevice dev) {
+        bool exclusive = true;
         Log.d("playbackForDevice ", dev);
         MyAudioSource pMySource = _synth;
+        HANDLE hEvent, hTask;
         if (!pMySource)
             return;
         if (!_currentDevice || _currentDevice.id != dev.id || _audioClient.isNull) {
@@ -434,24 +436,45 @@ class AudioPlayback : Thread {
         REFERENCE_TIME streamLatency;
         WAVEFORMATEX * mixFormat;
         HRESULT hr;
-        hr = _audioClient.GetMixFormat(mixFormat);
+        if(exclusive) {
+            // Call a helper function to negotiate with the audio
+            // device for an exclusive-mode stream format.
+            hr = GetStreamFormat(_audioClient, mixFormat);
+        } else {
+            hr = _audioClient.GetMixFormat(mixFormat);
+        }
         const REFTIMES_PER_SEC = 10000000; //10000000;
         const REFTIMES_PER_MILLISEC = REFTIMES_PER_SEC / 1000;
         //REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
         hr = _audioClient.GetDevicePeriod(defaultDevicePeriod, minimumDevicePeriod);
         Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
-        hr = _audioClient.Initialize(
-                AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
-                0,
-                defaultDevicePeriod, //minimumDevicePeriod, //hnsRequestedDuration,
-                0, //hnsRequestedDuration, // 0
-                mixFormat,
-                null);
+        if (exclusive) {
+            hr = _audioClient.Initialize(
+                    AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_EXCLUSIVE,
+                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                    minimumDevicePeriod, //minimumDevicePeriod, //hnsRequestedDuration,
+                    minimumDevicePeriod, //hnsRequestedDuration, // 0
+                    mixFormat,
+                    null);
+        } else {
+            hr = _audioClient.Initialize(
+                    AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
+                    0,
+                    defaultDevicePeriod, //minimumDevicePeriod, //hnsRequestedDuration,
+                    0, //hnsRequestedDuration, // 0
+                    mixFormat,
+                    null);
+        }
         if (checkError(hr, "AudioClient.Initialize failed")) return;
 
         UINT32 bufferFrameCount;
 
         hr = SetFormat(pMySource, mixFormat);
+        if (exclusive) {
+            hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+            hr = _audioClient.SetEventHandle(hEvent);
+            if (checkError(hr, "AudioClient.SetEventHandle failed")) return;
+        }
 
         hr = _audioClient.GetBufferSize(bufferFrameCount);
         if (checkError(hr, "AudioClient.GetBufferSize failed")) return;
@@ -477,6 +500,20 @@ class AudioPlayback : Thread {
         // Calculate the actual duration of the allocated buffer.
         REFERENCE_TIME hnsActualDuration;
         hnsActualDuration = cast(long)REFTIMES_PER_SEC * bufferFrameCount / mixFormat.nSamplesPerSec;
+
+
+        // Ask MMCSS to temporarily boost the thread priority
+        // to reduce glitches while the low-latency stream plays.
+        DWORD taskIndex = 0;
+        if (exclusive) {
+            hTask = cast(void*)1; //AvSetMmThreadCharacteristicsA("Pro Audio".ptr, taskIndex);
+            if (!hTask)
+            {
+                hr = E_FAIL;
+                if (checkError(hr, "AvSetMmThreadCharacteristics() failed")) return;
+            }
+        }
+
         hr = _audioClient.Start();  // Start playing.
         if (checkError(hr, "audioClient.Start() failed")) return;
         // Each loop fills about half of the shared buffer.
@@ -486,14 +523,28 @@ class AudioPlayback : Thread {
                 break;
             UINT32 numFramesAvailable;
             UINT32 numFramesPadding;
-            // Sleep for half the buffer duration.
-            Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
 
-            // See how much buffer space is available.
-            hr = _audioClient.GetCurrentPadding(numFramesPadding);
-            if (checkError(hr, "audioClient.GetCurrentPadding() failed")) break;
+            if (exclusive) {
+                // Wait for next buffer event to be signaled.
+                DWORD retval = WaitForSingleObject(hEvent, 1000);
+                if (retval != WAIT_OBJECT_0)
+                {
+                    // Event handle timed out after a 2-second wait.
+                    break;
+                }
+                numFramesAvailable = bufferFrameCount;
+            } else {
 
-            numFramesAvailable = bufferFrameCount - numFramesPadding;
+                // Sleep for half the buffer duration.
+                Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
+
+                // See how much buffer space is available.
+                hr = _audioClient.GetCurrentPadding(numFramesPadding);
+                if (checkError(hr, "audioClient.GetCurrentPadding() failed")) break;
+
+                numFramesAvailable = bufferFrameCount - numFramesPadding;
+            }
+
 
             // Grab all the available space in the shared buffer.
             hr = pRenderClient.GetBuffer(numFramesAvailable, pData);
@@ -508,6 +559,14 @@ class AudioPlayback : Thread {
         // Wait for last data in buffer to play before stopping.
         Sleep(cast(DWORD)(hnsActualDuration/REFTIMES_PER_MILLISEC/2));
         hr = _audioClient.Stop();
+        if (hEvent)
+        {
+            CloseHandle(hEvent);
+        }
+        if (hTask)
+        {
+            //AvRevertMmThreadCharacteristics(hTask);
+        }
         if (checkError(hr, "audioClient.Stop() failed")) return;
     }
 
