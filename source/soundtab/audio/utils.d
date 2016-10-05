@@ -19,6 +19,7 @@ HRESULT GetStreamFormat(AUDCLNT_SHAREMODE mode, IAudioClient _audioClient, ref W
 
     int[] sampleRates = [48000, 96000, 44100, 192000];
 
+    // FLOAT
     format.nChannels = 2;
     format.wValidBitsPerSample = 32;
     format.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
@@ -37,12 +38,60 @@ HRESULT GetStreamFormat(AUDCLNT_SHAREMODE mode, IAudioClient _audioClient, ref W
             } else {
                 mixFormat.Format = match.Format;
             }
-            Log.d("Found supported format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
+            Log.d("Found supported FLOAT format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
             return S_OK;
         }
     }
 
+    // PCM 32
+    format.wValidBitsPerSample = 32;
+    format.wBitsPerSample = 32;
+    format.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+    format.SubFormat = MEDIASUBTYPE_PCM;
+    foreach(rate; sampleRates) {
+        format.nSamplesPerSec = rate;
+        format.nAvgBytesPerSec = format.nSamplesPerSec * format.nChannels * format.wBitsPerSample / 8;
+        format.nBlockAlign = cast(WORD)(format.wBitsPerSample * format.nChannels / 8);
+        WAVEFORMATEXTENSIBLE * match;
+        hr = _audioClient.IsFormatSupported(mode, cast(WAVEFORMATEX*)&format, cast(WAVEFORMATEX**)&match);
+        if (hr == S_OK || hr == S_FALSE) {
+            if (!match)
+                match = &format;
+            if ((*match).wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+                mixFormat = *match;
+            } else {
+                mixFormat.Format = match.Format;
+            }
+            Log.d("Found supported PCM32 format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
+            return S_OK;
+        }
+    }
 
+    // PCM 24
+    format.wValidBitsPerSample = 24;
+    format.wBitsPerSample = 32;
+    format.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+    format.SubFormat = MEDIASUBTYPE_PCM;
+    foreach(rate; sampleRates) {
+        format.nSamplesPerSec = rate;
+        format.nAvgBytesPerSec = format.nSamplesPerSec * format.nChannels * format.wBitsPerSample / 8;
+        format.nBlockAlign = cast(WORD)(format.wBitsPerSample * format.nChannels / 8);
+        WAVEFORMATEXTENSIBLE * match;
+        hr = _audioClient.IsFormatSupported(mode, cast(WAVEFORMATEX*)&format, cast(WAVEFORMATEX**)&match);
+        if (hr == S_OK || hr == S_FALSE) {
+            if (!match)
+                match = &format;
+            if ((*match).wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+                mixFormat = *match;
+            } else {
+                mixFormat.Format = match.Format;
+            }
+            Log.d("Found supported PCM24 format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
+            return S_OK;
+        }
+    }
+
+    // PCM 16
     format.wValidBitsPerSample = 16;
     format.wBitsPerSample = 16;
     format.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
@@ -61,7 +110,7 @@ HRESULT GetStreamFormat(AUDCLNT_SHAREMODE mode, IAudioClient _audioClient, ref W
             } else {
                 mixFormat.Format = match.Format;
             }
-            Log.d("Found supported format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
+            Log.d("Found supported PCM16 format: samplesPerSec=", mixFormat.nSamplesPerSec, " nChannels=", mixFormat.nChannels, " bitsPerSample=", mixFormat.wBitsPerSample);
             return S_OK;
         }
     }
@@ -538,14 +587,15 @@ class AudioPlayback : Thread {
         Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
         if (exclusive) {
             REFERENCE_TIME requestedPeriod = minimumDevicePeriod;
-            //if (requestedPeriod * 4 < 100000)
-            //    requestedPeriod *= 4;
-            //else 
-            //if (requestedPeriod * 3 < 100000)
-            //    requestedPeriod *= 3;
-            //else 
-            if (requestedPeriod * 2 < 100000)
+            if (requestedPeriod * 4 < 70000)
+                requestedPeriod *= 4;
+            else 
+            if (requestedPeriod * 3 < 70000)
+                requestedPeriod *= 3;
+            else 
+            if (requestedPeriod * 2 < 70000)
                 requestedPeriod *= 2;
+            Log.d("exclusive mode, requested period=", requestedPeriod);
             hr = _audioClient.Initialize(
                     AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_EXCLUSIVE,
                     AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
