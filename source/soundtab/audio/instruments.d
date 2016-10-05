@@ -387,7 +387,7 @@ class MyAudioSource : InstrumentBase {
             }
         }
 
-        //Log.d("Instrument loadData frameCount=", frameCount, " lastGain=", lastGain, " newGain=", _gain_mul_65536);
+        Log.d("Instrument loadData frameCount=", frameCount, " lastGain=", lastGain, " newGain=", _gain_mul_65536);
 
         for (int i = 0; i < frameCount; i++) {
             /// one step
