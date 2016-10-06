@@ -420,6 +420,7 @@
      <File path="source\soundtab\ui\noteutil.d" />
      <File path="source\soundtab\ui\pitchwidget.d" />
      <File path="source\soundtab\ui\pressurewidget.d" />
+     <File path="source\soundtab\ui\slidercontroller.d" />
      <File path="source\soundtab\ui\sndcanvas.d" />
      <File path="source\soundtab\ui\synthwidget.d" />
     </Folder>

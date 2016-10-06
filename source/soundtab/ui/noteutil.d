@@ -128,3 +128,33 @@ int whiteNotesInRange(int start, int end) {
     }
     return res;
 }
+
+struct PitchCorrector {
+    private int _amount;
+    @property int amount() {
+        return _amount;
+    }
+    @property void amount(int v) {
+        if (v < 0)
+            v = 0;
+        else if (v > 1000)
+            v = 1000;
+        _amount = v;
+    }
+    double correctNote(double note) {
+        import std.math : round;
+        if (_amount <= 0)
+            return note;
+        if (_amount >= 1000) {
+            return round(note);
+        }
+        double v1 = note;
+        double v2 = round(note);
+        double diff = v1 - v2;
+        return v2 + diff * (1000 - _amount) / 1000;
+    }
+
+    double correctPitch(double pitch) {
+        return fromLogScale(correctNote(toLogScale(pitch)));
+    }
+}

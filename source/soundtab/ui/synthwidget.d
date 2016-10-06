@@ -5,9 +5,11 @@ import dlangui.widgets.layouts;
 import dlangui.widgets.controls;
 import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
+import soundtab.ui.noteutil;
 import soundtab.ui.pitchwidget;
 import soundtab.ui.pressurewidget;
 import soundtab.ui.noterangewidget;
+import soundtab.ui.slidercontroller;
 import soundtab.audio.playback;
 import soundtab.audio.instruments;
 
@@ -20,6 +22,14 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
     MyAudioSource _instrument;
+
+    SliderController _chorus;
+    SliderController _reverb;
+    SliderController _vibrato;
+    SliderController _vibratoFreq;
+    SliderController _pitchCorrection;
+
+    PitchCorrector _corrector;
 
     ~this() {
         _tablet.uninit();
@@ -48,13 +58,26 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsLayout.addChild(_controlsh);
 
 
-        _controlsh.addChild(new CheckBox("pitchCorrection", "Pitch correction"d));
+        _chorus = new SliderController("chorus", "Chorus", 0, 1000, 0);
+        _controlsh.addChild(_chorus);
 
+        _reverb = new SliderController("reverb", "Reverb", 0, 1000, 0);
+        _controlsh.addChild(_reverb);
+
+        _vibrato = new SliderController("vibrato", "Vibrato amount", 0, 1000, 0);
+        _controlsh.addChild(_vibrato);
+
+        _vibratoFreq = new SliderController("vibratoFreq", "Vibrato freq", 0, 1000, 0);
+        _controlsh.addChild(_vibratoFreq);
 
         _controlsh.addChild(new HSpacer());
 
         _pressureWidget = new PressureWidget();
         _controlsh.addChild(_pressureWidget);
+
+        _pitchCorrection = new SliderController("pitchCorrection", "Pitch correction", 0, 1000, 0);
+        _pitchCorrection.onChange = &onController;
+        _controlsh.addChild(_pitchCorrection);
 
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
@@ -74,6 +97,16 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _playback.start();
     }
 
+    void onController(SliderController source, int value) {
+        switch (source.id) {
+            case "pitchCorrection":
+                _corrector.amount = value;
+                break;
+            default:
+                break;
+        }
+    }
+
     void onNoteRangeChange(int minNote, int maxNote) {
         _soundCanvas.setNoteRange(minNote, maxNote);
     }
@@ -83,10 +116,11 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     bool _proximity = false;
     void onPositionChange(double x, double y, double pressure, uint buttons) {
         _soundCanvas.setPosition(x, y, pressure);
-        _pitchWidget.setPitch(_soundCanvas.pitch);
-        _noteRangeWidget.setPitch(_soundCanvas.pitch);
+        double pitch = _corrector.correctPitch(_soundCanvas.pitch);
+        _instrument.setSynthParams(pitch, pressure, y);
+        _pitchWidget.setPitch(pitch);
+        _noteRangeWidget.setPitch(pitch);
         _pressureWidget.setPressure(pressure, _proximity);
-        _instrument.setSynthParams(_soundCanvas.pitch, pressure, y);
         invalidate();
         window.update();
     }
