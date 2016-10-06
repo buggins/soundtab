@@ -142,7 +142,7 @@ struct PitchCorrector {
         _amount = v;
     }
     double correctNote(double note) {
-        import std.math : round;
+        import std.math : round, pow;
         if (_amount <= 0)
             return note;
         if (_amount >= 1000) {
@@ -150,8 +150,14 @@ struct PitchCorrector {
         }
         double v1 = note;
         double v2 = round(note);
-        double diff = v1 - v2;
-        return v2 + diff * (1000 - _amount) / 1000;
+        double diff = v1 - v2; // -0.5 .. 0.5
+        double diffsgn = diff > 0 ? 0.5 : -0.5; // -0.5 or 0.5
+        double diffabs = diff > 0 ? 2 * diff : - 2 * diff; // 0 .. 1
+        double p = ((_amount / 1000.0) + 1) * 1.5;
+        diffabs = pow(diffabs, p);
+        // correct diffabs
+        return v2 + diffabs * diffsgn;
+        //return v2 + diff * (1000 - _amount) / 1000;
     }
 
     double correctPitch(double pitch) {
