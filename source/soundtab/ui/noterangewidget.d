@@ -1,4 +1,4 @@
-module soundtab.ui.pitchwidget;
+module soundtab.ui.noterangewidget;
 
 import dlangui.widgets.widget;
 import soundtab.ui.noteutil;
@@ -10,14 +10,20 @@ class PitchWidget : Widget {
     this() {
         super("pitch");
         styleId = "EDIT_LINE";
+        layoutWidth = FILL_PARENT;
     }
 
     /** 
     Measure widget according to desired width and height constraints. (Step 1 of two phase layout). 
     */
     override void measure(int parentWidth, int parentHeight) {
+        int w = parentWidth;
+        Rect m = margins;
+        Rect p = padding;
+        w -= m.left + m.right + p.left + p.right;
+
         int h = font.height * 2;
-        measuredContent(parentWidth, parentHeight, parentWidth / 3, h);
+        measuredContent(parentWidth, parentHeight, parentWidth, h);
     }
 
     /// Draw widget at its position to buffer

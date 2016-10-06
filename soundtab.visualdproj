@@ -416,6 +416,7 @@
      <File path="source\soundtab\audio\playback.d" />
     </Folder>
     <Folder name="ui">
+     <File path="source\soundtab\ui\noterangewidget.d" />
      <File path="source\soundtab\ui\noteutil.d" />
      <File path="source\soundtab\ui\pitchwidget.d" />
      <File path="source\soundtab\ui\pressurewidget.d" />

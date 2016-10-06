@@ -70,6 +70,14 @@ class SoundCanvas : Widget {
         Log.d("toLogScale(440 + half tone)=", toLogScale(440 * HALF_TONE));
         Log.d("fromLogScale(12)=", fromLogScale(12));
         
+        Log.d("noteNameToNote(A4)=", fullNameToNote("A4"));
+        Log.d("noteNameToNote(C5)=", fullNameToNote("C5"));
+
+        import std.math : round;
+        for (int i = -25; i < 25; i++) {
+            Log.d("note=", i, " name=", noteToFullName(i), " fullNameToNote=", fullNameToNote(noteToFullName(i)), " freq=", fromLogScale(i), " noteIndex=", round(toLogScale(fromLogScale(i))));
+        }
+
         //*/
         setNoteRange(-36, 36);
         trackHover = true;

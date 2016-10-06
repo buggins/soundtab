@@ -1,3 +1,9 @@
+/**
+
+   In log scale, 0 is C5, -3 is A4 (440Hz)
+
+*/
+
 module soundtab.ui.noteutil;
 
 import std.string : format;
@@ -8,16 +14,16 @@ immutable double QUARTER_TONE = 1.02930223664349207440;
 
 immutable double BASE_FREQUENCY = 440.0;
 
-/// Convert frequency to log scale, 0 = BASE_FREQUENCY (440hz), 1 = + half tone, 12 = + octave (880Hz), -12 = -octave (220hz)
+/// Convert frequency to log scale, 0 = BASE_FREQUENCY (440hz + 3halftones), +1 == + half tone, +12 == + octave (880Hz), -12 == -octave (220hz)
 double toLogScale(double freq) {
     if (freq < 8)
         return -6 * 12;
-    return log2(freq / BASE_FREQUENCY) * 12;
+    return log2(freq / BASE_FREQUENCY) * 12 - 3;
 }
 
-/// Convert from note (log scale) to frequency (0 -> 440, 12 -> 880, -12 -> 220)
+/// Convert from note (log scale) to frequency (-3 -> 440, 9 -> 880, -15 -> 220)
 double fromLogScale(double note) {
-    return exp2(note / 12) * BASE_FREQUENCY;
+    return exp2((note + 3) / 12) * BASE_FREQUENCY;
 }
 
 /// returns index 0..11 of nearest note (0=A, 1=A#, 2=B, .. 11=G#)
@@ -36,11 +42,11 @@ int getNearestNote(double note) {
 
 int getNoteOctave(double note) {
     int n = getNearestNote(note);
-    return ((n - 3) + 12*5) / 12;
+    return (n + 12*5) / 12;
 }
 
-immutable dstring[9] OCTAVE_NAMES = [
-    "0", "1", "2",  "3",  "4", "5",  "6", "7",  "8"
+immutable dstring[10] OCTAVE_NAMES = [
+    "0", "1", "2",  "3",  "4", "5",  "6", "7",  "8", "9"
 ];
 
 dstring getNoteOctaveName(double note) {
@@ -50,13 +56,9 @@ dstring getNoteOctaveName(double note) {
     return OCTAVE_NAMES[oct];
 }
 
-
 // 0  1  2  3  4  5  6  7  8  9  10 11
-// A  A# B  C  C# D  D# E  F  F# G  G#
+// C  C# D  D# E  F  F# G  G# A  A# B
 immutable static bool[12] BLACK_NOTES = [
-    false, // A
-    true,  // A#
-    false, // B
     false, // C
     true,  // C#
     false, // D
@@ -66,6 +68,9 @@ immutable static bool[12] BLACK_NOTES = [
     true,  // F#
     false, // G
     true,  // G#
+    false, // A
+    true,  // A#
+    false, // B
 ];
 
 /// returns true for "black" - sharp note, e.g. for A#, G#
@@ -75,13 +80,28 @@ bool isBlackNote(double note) {
 }
 
 immutable dstring[12] NOTE_NAMES = [
-    "A", "A#", "B",  "C",  "C#", "D",  "D#", "E",  "F",  "F#", "G", "G#"
+    "C",  "C#", "D",  "D#", "E",  "F",  "F#", "G", "G#", "A", "A#", "B",
 ];
 
 dstring getNoteName(double n) {
     return NOTE_NAMES[getNoteIndex(n)];
 }
 
-dstring getNoteFullName(double n) {
-    return getNoteName(n) ~ getNoteOctaveName(n);
+dstring noteToFullName(double note) {
+    return getNoteName(note) ~ getNoteOctaveName(note);
+}
+
+dstring noteToFullName(int note) {
+    return getNoteName(note) ~ getNoteOctaveName(note);
+}
+
+int fullNameToNote(dstring noteName) {
+    dstring note = noteName[0 .. $ - 1];
+    int octaveNumber = cast(int)(noteName[$ - 1] - '0');
+    foreach(idx, name; NOTE_NAMES) {
+        if (name == note) {
+            return cast(int)((octaveNumber - 5) * 12 + idx);
+        }
+    }
+    return 0;
 }
