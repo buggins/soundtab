@@ -75,7 +75,7 @@ class SoundCanvas : Widget {
 
         import std.math : round;
         for (int i = -25; i < 25; i++) {
-            Log.d("note=", i, " name=", noteToFullName(i), " fullNameToNote=", fullNameToNote(noteToFullName(i)), " freq=", fromLogScale(i), " noteIndex=", round(toLogScale(fromLogScale(i))));
+            Log.d("note=", i, " name=", noteToFullName(i), " fullNameToNote=", fullNameToNote(noteToFullName(i)), " freq=", fromLogScale(i), " noteIndex=", round(toLogScale(fromLogScale(i))), " isBlack=", isBlackNote(i));
         }
 
         //*/

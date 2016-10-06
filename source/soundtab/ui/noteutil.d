@@ -79,6 +79,11 @@ bool isBlackNote(double note) {
     return BLACK_NOTES[nn];
 }
 
+/// returns true for "black" - sharp note, e.g. for A#, G#
+bool isBlackNote(int note) {
+    return BLACK_NOTES[(note + 12*8) % 12];
+}
+
 immutable dstring[12] NOTE_NAMES = [
     "C",  "C#", "D",  "D#", "E",  "F",  "F#", "G", "G#", "A", "A#", "B",
 ];
@@ -104,4 +109,22 @@ int fullNameToNote(dstring noteName) {
         }
     }
     return 0;
+}
+
+int whiteNotesInRange(int start, int end) {
+    start += 12*8;
+    end += 12*8;
+    int res = 0;
+    for (int i = start; i <= end; ) {
+        int idx = i % 12;
+        if (idx == 0 && i + 12 <= end) {
+            res += 7;
+            i += 12;
+        } else {
+            if (!BLACK_NOTES[idx])
+                res++;
+            i++;
+        }
+    }
+    return res;
 }

@@ -7,6 +7,7 @@ import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.pitchwidget;
 import soundtab.ui.pressurewidget;
+import soundtab.ui.noterangewidget;
 import soundtab.audio.playback;
 import soundtab.audio.instruments;
 
@@ -15,6 +16,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     VerticalLayout _controlsLayout;
     Tablet _tablet;
     PitchWidget _pitchWidget;
+    NoteRangeWidget _noteRangeWidget;
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
     MyAudioSource _instrument;
@@ -56,6 +58,9 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
+    
+        _noteRangeWidget = new NoteRangeWidget();
+        addChild(_noteRangeWidget);
 
         _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
@@ -72,6 +77,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     void onPositionChange(double x, double y, double pressure, uint buttons) {
         _soundCanvas.setPosition(x, y, pressure);
         _pitchWidget.setPitch(_soundCanvas.pitch);
+        _noteRangeWidget.setPitch(_soundCanvas.pitch);
         _pressureWidget.setPressure(pressure, _proximity);
         _instrument.setSynthParams(_soundCanvas.pitch, pressure, y);
         invalidate();
