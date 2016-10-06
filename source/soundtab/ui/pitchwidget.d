@@ -17,7 +17,7 @@ class PitchWidget : Widget {
     */
     override void measure(int parentWidth, int parentHeight) {
         int h = font.height * 2;
-        measuredContent(parentWidth, parentHeight, parentWidth / 3, h);
+        measuredContent(parentWidth, parentHeight, parentWidth / 5, h);
     }
 
     /// Draw widget at its position to buffer

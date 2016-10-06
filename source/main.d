@@ -26,7 +26,7 @@ extern (C) int UIAppMain(string[] args) {
     // create window
     Log.d("Creating window");
     import dlangui.platforms.windows.winapp;
-    Win32Window window = cast(Win32Window)Platform.instance.createWindow("DlangUI example - HelloWorld", null, WindowFlag.Resizable, 1000, 800);
+    Win32Window window = cast(Win32Window)Platform.instance.createWindow("DlangUI example - HelloWorld", null, WindowFlag.Resizable, 1000, 700);
 
     Tablet tablet = new Tablet();
     window.onUnknownWindowMessage = &tablet.onUnknownWindowMessage;

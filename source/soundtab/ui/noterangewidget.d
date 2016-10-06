@@ -2,8 +2,15 @@ module soundtab.ui.noterangewidget;
 
 import dlangui.widgets.widget;
 import soundtab.ui.noteutil;
+import dlangui.core.signals;
+
+interface NoteRangeChangeHandler {
+    void onNoteRangeChange(int minNote, int maxNote);
+}
 
 class NoteRangeWidget : Widget {
+
+    Signal!NoteRangeChangeHandler onNoteRangeChange;
 
     double _currentPitch = 440;
 
@@ -14,6 +21,9 @@ class NoteRangeWidget : Widget {
 
     int _rangeStart;
     int _rangeEnd;
+
+    @property int rangeStart() { return _rangeStart; }
+    @property int rangeEnd() { return _rangeEnd; }
 
     this() {
         super("pitch");
@@ -28,6 +38,68 @@ class NoteRangeWidget : Widget {
     void setPitch(double freq) {
         _currentPitch = freq;
         invalidate();
+    }
+
+    void handleRangeChange(int start, int end) {
+        if (_rangeStart == start && _rangeEnd == end)
+            return;
+        if (_rangeStart == start) {
+            _rangeEnd = end;
+            // end is moved
+            if (_rangeEnd - _rangeStart < 12)
+                _rangeStart = _rangeEnd - 12;
+        } else {
+            // start is moved
+            _rangeStart = start;
+            if (_rangeEnd - _rangeStart < 12)
+                _rangeEnd = _rangeStart + 12;
+        }
+        if (isBlackNote(_rangeStart))
+            _rangeStart--;
+        if (isBlackNote(_rangeEnd))
+            _rangeEnd++;
+        if (_rangeEnd - _rangeStart < 12)
+            _rangeEnd = _rangeStart + 12;
+        if (_rangeStart < _minNote) {
+            _rangeStart = _minNote;
+            if (_rangeEnd - _rangeStart < 12)
+                _rangeEnd = _rangeStart + 12;
+        }
+        if (_rangeEnd > _maxNote) {
+            _rangeEnd = _maxNote;
+            if (_rangeEnd - _rangeStart < 12)
+                _rangeStart = _rangeEnd - 12;
+        }
+        //Log.d("NoteRangeWidget: new note range = ", noteToFullName(_rangeStart), " .. ", noteToFullName(_rangeEnd));
+        if (onNoteRangeChange.assigned)
+            onNoteRangeChange(_rangeStart, _rangeEnd);
+    }
+
+    /// process mouse event; return true if event is processed by widget.
+    override bool onMouseEvent(MouseEvent event) {
+        if (event.action == MouseAction.ButtonDown || (event.action == MouseAction.Move && event.buttonFlags)) {
+            int note = noteByPoint(event.x);
+            int side = 0;
+            if (event.action == MouseAction.ButtonDown && event.button == MouseButton.Left)
+                side = -1;
+            if (event.action == MouseAction.Move && event.buttonFlags & MouseFlag.LButton)
+                side = -1;
+            if (event.action == MouseAction.ButtonDown && event.button == MouseButton.Right)
+                side = 1;
+            if (event.action == MouseAction.Move && event.buttonFlags & MouseFlag.RButton)
+                side = 1;
+            if (side < 0) {
+                handleRangeChange(note, _rangeEnd);
+                invalidate();
+                return true;
+            }
+            if (side > 0) {
+                handleRangeChange(_rangeStart, note);
+                invalidate();
+                return true;
+            }
+        }
+        return super.onMouseEvent(event);
     }
 
     /** 
@@ -45,6 +117,32 @@ class NoteRangeWidget : Widget {
 
         int h = _keyWidth * 5;
         measuredContent(parentWidth, parentHeight, _keyWidth * _keys, h);
+    }
+
+    int noteByPoint(int x) {
+        Rect rc = _pos;
+        applyMargins(rc);
+        applyPadding(rc);
+        int delta = (rc.width  - 2) - (_keyWidth * _keys);
+        rc.left += delta / 2;
+        rc.right = rc.left + _keyWidth * _keys + 1;
+        rc.shrink(1, 1);
+        if (x < rc.left)
+            return _minNote;
+        if (x >= rc.right)
+            return _maxNote;
+        Rect keyRect = rc;
+        int index = 0;
+        for (int i = _minNote; i <= _maxNote; i++) {
+            if (!isBlackNote(i)) {
+                keyRect.left = rc.left + _keyWidth * index;
+                keyRect.right = keyRect.left + _keyWidth - 1;
+                if (x < keyRect.right)
+                    return i;
+                index++;
+            }
+        }
+        return _maxNote;
     }
 
     /// Set widget rectangle to specified value and layout widget contents. (Step 2 of two phase layout).
@@ -81,8 +179,10 @@ class NoteRangeWidget : Widget {
         rc.shrink(1, 1);
         Rect keyRect = rc;
 
-        int currentNote = getNearestNote(toLogScale(_currentPitch));
+        double note = toLogScale(_currentPitch);
+        int currentNote = getNearestNote(note);
         int index = 0;
+        int noteDelta = cast(int)((note - currentNote) * 1000);
         for (int i = _minNote; i <= _maxNote; i++) {
             bool inRange = (i >= _rangeStart) && (i <= _rangeEnd);
             if (!isBlackNote(i)) {
@@ -98,6 +198,8 @@ class NoteRangeWidget : Widget {
                     hrc.right -= 1;
                     hrc.bottom -= 1;
                     buf.fillRect(hrc, 0xFFC0C0);
+                    int x = hrc.middlex + hrc.width * noteDelta / 1000;
+                    buf.fillRect(Rect(x, hrc.top, x + 1, hrc.bottom), 0xFF0000);
                 }
                 index++;
             }
@@ -119,6 +221,8 @@ class NoteRangeWidget : Widget {
                     blackRect.bottom -= 2;
                     //blackRect.top += 1;
                     buf.fillRect(blackRect, color);
+                    int x = blackRect.middlex + blackRect.width * noteDelta / 1000;
+                    buf.fillRect(Rect(x, blackRect.top, x + 1, blackRect.bottom), 0xFF0000);
                 }
             }
         }

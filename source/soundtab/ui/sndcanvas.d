@@ -36,6 +36,14 @@ class SoundCanvas : Widget {
         _maxPitch = fromLogScale(_maxNote);
     }
 
+    void setNoteRange(int minnote, int maxnote) {
+        _minNote = minnote - 0.49;
+        _maxNote = maxnote + 0.49;
+        //Log.d("SoundCanvas.setNoteRange: ", _minNote, " .. ", _maxNote, " (", noteToFullName(_minNote), " .. ", noteToFullName(_maxNote), ")");
+        _minPitch = fromLogScale(_minNote);
+        _maxPitch = fromLogScale(_maxNote);
+    }
+
     @property double pitch() { return _currentPitch; }
     @property double controller1() { return _currentY; }
     void setPosition(double x, double y, double pressure) {

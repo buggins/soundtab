@@ -59,16 +59,23 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
     
+        _soundCanvas = new SoundCanvas(this);
+        addChild(_soundCanvas);
+
         _noteRangeWidget = new NoteRangeWidget();
         addChild(_noteRangeWidget);
 
-        _soundCanvas = new SoundCanvas(this);
-        addChild(_soundCanvas);
+        _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
+        _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
         _playback = new AudioPlayback();
         _instrument = new MyAudioSource();
         _playback.setSynth(_instrument);
         _playback.start();
+    }
+
+    void onNoteRangeChange(int minNote, int maxNote) {
+        _soundCanvas.setNoteRange(minNote, maxNote);
     }
 
     @property bool tabletInitialized() { return _tablet.isInitialized; }
