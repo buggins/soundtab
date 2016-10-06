@@ -7,7 +7,7 @@ import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.pitchwidget;
 import soundtab.ui.pressurewidget;
-import soundtab.audio.utils;
+import soundtab.audio.playback;
 import soundtab.audio.instruments;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {

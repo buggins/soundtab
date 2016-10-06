@@ -1,10 +1,10 @@
-module soundtab.audio.utils;
+module soundtab.audio.playback;
 
-import soundtab.audio.coreaudio;
 import core.sys.windows.windows;
 import core.sys.windows.objidl;
 import core.sys.windows.wtypes;
-import soundtab.audio.comutils;
+import wasapi.coreaudio;
+import wasapi.comutils;
 import dlangui.core.logger;
 import std.string;
 import core.thread;

@@ -53,7 +53,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -155,7 +155,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -257,7 +257,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -359,7 +359,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -412,8 +412,6 @@
   <Folder name="source">
    <Folder name="soundtab">
     <Folder name="audio">
-     <File path="source\soundtab\audio\comutils.d" />
-     <File path="source\soundtab\audio\coreaudio.d" />
      <File path="source\soundtab\audio\instruments.d" />
      <File path="source\soundtab\audio\playback.d" />
     </Folder>
@@ -427,7 +425,6 @@
    </Folder>
    <Folder name="wintab">
     <File path="source\derelict\wintab\tablet.d" />
-    <File path="source\derelict\wintab\wintab.d" />
    </Folder>
   </Folder>
   <File path="source\main.d" />

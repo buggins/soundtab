@@ -11,8 +11,8 @@ import core.sys.windows.windows;
 import soundtab.ui.sndcanvas;
 import soundtab.ui.synthwidget;
 
-import soundtab.audio.coreaudio;
-import soundtab.audio.utils;
+import wasapi.coreaudio;
+import soundtab.audio.playback;
 
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
