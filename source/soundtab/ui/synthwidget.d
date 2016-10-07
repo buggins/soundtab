@@ -95,6 +95,15 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _instrument = new MyAudioSource();
         _playback.setSynth(_instrument);
         _playback.start();
+
+        import derelict.mpg123;
+        try {
+            DerelictMPG123.load();
+            Log.d("libmpg123 shared library is loaded ok", e);
+        } catch (Exception e) {
+            Log.e("Cannot load libmpg123 shared library", e);
+        }
+
     }
 
     void onController(SliderController source, int value) {

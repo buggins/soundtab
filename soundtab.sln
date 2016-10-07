@@ -6,6 +6,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "soundtab", "soundtab.visualdproj", "{8278B362-2C72-4525-9D77-1EEEE598064F}"
 	ProjectSection(ProjectDependencies) = postProject
 		{D527330D-C634-4FE2-8E27-658CDB9F72E2} = {D527330D-C634-4FE2-8E27-658CDB9F72E2}
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C} = {3A0F1071-C4E0-4533-BBE1-22218492B05C}
 		{52A2ABB9-2CF7-4D5F-AE8C-75B21F8585A5} = {52A2ABB9-2CF7-4D5F-AE8C-75B21F8585A5}
 		{458044F4-47BB-42D4-93CD-E4906A621457} = {458044F4-47BB-42D4-93CD-E4906A621457}
 	EndProjectSection
@@ -15,6 +16,8 @@ EndProject
 Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "wasapi", "..\wasapi\wasapi.visualdproj", "{D527330D-C634-4FE2-8E27-658CDB9F72E2}"
 EndProject
 Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "derelict_wintab", "..\derelict-wintab\derelict-wintab.visualdproj", "{458044F4-47BB-42D4-93CD-E4906A621457}"
+EndProject
+Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "DerelictMPG123", "..\DerelictMPG123\DerelictMPG123.visualdproj", "{3A0F1071-C4E0-4533-BBE1-22218492B05C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -92,6 +95,22 @@ Global
 		{458044F4-47BB-42D4-93CD-E4906A621457}.Unittest|x64.Build.0 = Release|x64
 		{458044F4-47BB-42D4-93CD-E4906A621457}.Unittest|x86.ActiveCfg = Release|Win32
 		{458044F4-47BB-42D4-93CD-E4906A621457}.Unittest|x86.Build.0 = Release|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.ConsoleDebug|x64.ActiveCfg = Debug|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.ConsoleDebug|x64.Build.0 = Debug|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.ConsoleDebug|x86.ActiveCfg = Debug|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.ConsoleDebug|x86.Build.0 = Debug|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Debug|x64.ActiveCfg = Debug|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Debug|x64.Build.0 = Debug|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Debug|x86.ActiveCfg = Debug|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Debug|x86.Build.0 = Debug|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Release|x64.ActiveCfg = Release|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Release|x64.Build.0 = Release|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Release|x86.ActiveCfg = Release|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Release|x86.Build.0 = Release|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Unittest|x64.ActiveCfg = Release|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Unittest|x64.Build.0 = Release|x64
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Unittest|x86.ActiveCfg = Release|Win32
+		{3A0F1071-C4E0-4533-BBE1-22218492B05C}.Unittest|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

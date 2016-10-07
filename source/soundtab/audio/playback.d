@@ -351,7 +351,7 @@ class AudioPlayback : Thread {
         // Ask MMCSS to temporarily boost the thread priority
         // to reduce glitches while the low-latency stream plays.
         if (exclusive) {
-            setHighThreadPriority(hTask);
+            hTask = setHighThreadPriority();
             //hTask = cast(void*)1; //AvSetMmThreadCharacteristicsA("Pro Audio".ptr, taskIndex);
             if (!hTask) {
                 hr = E_FAIL;

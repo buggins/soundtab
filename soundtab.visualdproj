@@ -53,7 +53,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source  $(SolutionDir)/../wasapi/source $(SolutionDir)/../DerelictMPG123/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -155,7 +155,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source  $(SolutionDir)/../wasapi/source $(SolutionDir)/../DerelictMPG123/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -257,7 +257,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source  $(SolutionDir)/../wasapi/source $(SolutionDir)/../DerelictMPG123/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
@@ -359,7 +359,7 @@
   <cccmd>$(CC) -c</cccmd>
   <ccTransOpt>1</ccTransOpt>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
-  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source</imppath>
+  <imppath>$(SolutionDir)/../dlangui/src $(SolutionDir)/../dlangui/3rdparty $(SolutionDir)/../dlangui/deps/DerelictGL3/source  $(SolutionDir)/../dlangui/deps/DerelictUtil/source  $(SolutionDir)/../dlangui/deps/DerelictFT/source  $(SolutionDir)/../dlangui/deps/DerelictSDL2/source $(SolutionDir)/../wasapi/source $(SolutionDir)/../derelict-wintab/source  $(SolutionDir)/../wasapi/source $(SolutionDir)/../DerelictMPG123/source</imppath>
   <fileImppath />
   <outdir>$(PlatformName)\$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
