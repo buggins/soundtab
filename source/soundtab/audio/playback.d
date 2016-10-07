@@ -350,11 +350,10 @@ class AudioPlayback : Thread {
 
         // Ask MMCSS to temporarily boost the thread priority
         // to reduce glitches while the low-latency stream plays.
-        DWORD taskIndex = 0;
         if (exclusive) {
-            hTask = cast(void*)1; //AvSetMmThreadCharacteristicsA("Pro Audio".ptr, taskIndex);
-            if (!hTask)
-            {
+            setHighThreadPriority(hTask);
+            //hTask = cast(void*)1; //AvSetMmThreadCharacteristicsA("Pro Audio".ptr, taskIndex);
+            if (!hTask) {
                 hr = E_FAIL;
                 if (checkError(hr, "AvSetMmThreadCharacteristics() failed")) return;
             }
@@ -409,10 +408,7 @@ class AudioPlayback : Thread {
         {
             CloseHandle(hEvent);
         }
-        if (hTask)
-        {
-            //AvRevertMmThreadCharacteristics(hTask);
-        }
+        restoreThreadPriority(hTask);
         if (checkError(hr, "audioClient.Stop() failed")) return;
     }
 
