@@ -9,7 +9,7 @@ class PressureWidget : Widget {
     bool _currentProximity = false;
 
     this() {
-        super("pitch");
+        super("pressure");
         margins = Rect(3,3,3,3);
         //styleId = "EDIT_LINE";
     }

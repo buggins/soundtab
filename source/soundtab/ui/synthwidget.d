@@ -3,6 +3,8 @@ module soundtab.ui.synthwidget;
 import dlangui.widgets.widget;
 import dlangui.widgets.layouts;
 import dlangui.widgets.controls;
+import dlangui.widgets.combobox;
+import dlangui.widgets.groupbox;
 import soundtab.ui.sndcanvas;
 import derelict.wintab.tablet;
 import soundtab.ui.noteutil;
@@ -23,6 +25,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     AudioPlayback _playback;
     MyAudioSource _instrument;
 
+    ComboBox _instrSelection;
     SliderController _chorus;
     SliderController _reverb;
     SliderController _vibrato;
@@ -57,6 +60,15 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsh.margins = Rect(3,3,3,3);
         _controlsLayout.addChild(_controlsh);
 
+        StringListValue[] instrList = [
+            StringListValue("Ethereal", "Ethereal"d),
+            StringListValue("SineWave", "Sine Wave"d)
+        ];
+        GroupBox gb = new GroupBox("instrgb", "Instrument"d);
+        _instrSelection = new ComboBox("instrument", instrList);
+        _instrSelection.selectedItemIndex = 0;
+        gb.addChild(_instrSelection);
+        _controlsh.addChild(gb);
 
         _chorus = new SliderController("chorus", "Chorus", 0, 1000, 0);
         _controlsh.addChild(_chorus);
@@ -72,9 +84,6 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         _controlsh.addChild(new HSpacer());
 
-        _pressureWidget = new PressureWidget();
-        _controlsh.addChild(_pressureWidget);
-
         _pitchCorrection = new SliderController("pitchCorrection", "Pitch correction", 0, 1000, 0);
         _pitchCorrection.onChange = &onController;
         _controlsh.addChild(_pitchCorrection);
@@ -82,6 +91,9 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _pitchWidget = new PitchWidget();
         _controlsh.addChild(_pitchWidget);
     
+        _pressureWidget = new PressureWidget();
+        _controlsh.addChild(_pressureWidget);
+
         _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
 
@@ -99,7 +111,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         import derelict.mpg123;
         try {
             DerelictMPG123.load();
-            Log.d("libmpg123 shared library is loaded ok", e);
+            Log.d("libmpg123 shared library is loaded ok");
         } catch (Exception e) {
             Log.e("Cannot load libmpg123 shared library", e);
         }

@@ -3,26 +3,24 @@ module soundtab.ui.slidercontroller;
 import dlangui.widgets.widget;
 import dlangui.widgets.layouts;
 import dlangui.widgets.controls;
+import dlangui.widgets.scrollbar;
+import dlangui.widgets.groupbox;
 import dlangui.core.signals;
 
 interface SliderControllerHandler {
     void onController(SliderController source, int value);
 }
 
-class SliderController : VerticalLayout {
+class SliderController : GroupBox {
     Signal!SliderControllerHandler onChange;
-    private TextWidget _label;
     private SliderWidget _slider;
 
     this(string ID, dstring label, int minValue, int maxValue, int value) {
-        super(ID);
-        styleId = STYLE_EDIT_LINE;
-        _label = new TextWidget(null, label);
+        super(ID, label);
         _slider = new SliderWidget(null, Orientation.Horizontal);
         _slider.setRange(minValue, maxValue);
         _slider.position = minValue;
         _slider.scrollEvent = &onScrollEvent;
-        addChild(_label);
         addChild(_slider);
     }
 

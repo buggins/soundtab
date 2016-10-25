@@ -14,6 +14,8 @@ import soundtab.ui.synthwidget;
 import wasapi.coreaudio;
 import soundtab.audio.playback;
 
+import soundtab.ui.frame;
+
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
 
@@ -35,7 +37,7 @@ extern (C) int UIAppMain(string[] args) {
 
     // create some widget to show in window
     //window.mainWidget = (new Button()).text("Hello, world!"d).margins(Rect(20,20,20,20));
-    window.mainWidget = new SynthWidget(tablet);
+    window.mainWidget = new SoundFrame(tablet);
 
 
     // show window

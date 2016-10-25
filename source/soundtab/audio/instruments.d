@@ -151,6 +151,21 @@ union FloatConv {
 
 class AudioSource {
 
+    import core.sync.mutex;
+
+    protected Mutex _lock;
+
+
+    this() {
+        _lock = new Mutex();
+    }
+    void lock() {
+        _lock.lock();
+    }
+    void unlock() {
+        _lock.unlock();
+    }
+
     protected SampleFormat sampleFormat = SampleFormat.float32;
     protected int samplesPerSecond = 44100;
     protected int channels = 2;
@@ -162,6 +177,9 @@ class AudioSource {
     }
 
     void setFormat(SampleFormat format, int channels, int samplesPerSecond, int bitsPerSample, int blockAlign) {
+        lock();
+        scope(exit)unlock();
+
         this.sampleFormat = format;
         this.channels = channels;
         this.samplesPerSecond = samplesPerSecond;
@@ -220,6 +238,11 @@ class AudioSource {
     }
 }
 
+struct Controller {
+    string id;
+    dstring name;
+}
+
 class Instrument : AudioSource {
 
     protected double _targetPitch = 1000; // Hz
@@ -229,7 +252,20 @@ class Instrument : AudioSource {
     protected int _attack = 20;
     protected int _release = 40;
 
+    /// returns list of supported controllers
+    immutable(Controller)[] getControllers() {
+        return [];
+    }
+
+    /// returns true if controller value is set, false for unknown controller
+    bool updateController(string controllerName, int value) {
+        return false;
+    }
+
     void setSynthParams(double pitch, double gain, double controller1) {
+        lock();
+        scope(exit)unlock();
+
         if (pitch < 16)
             pitch = 16;
         if (pitch > 12000)
@@ -361,7 +397,11 @@ class MyAudioSource : InstrumentBase {
     //int durationCounter = 100;
 
     override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
-        calcParams();
+        {
+            lock();
+            scope(exit)unlock();
+            calcParams();
+        }
 
         int frameMillis = frameCount < 10 ? 10 : 1000 * frameCount / samplesPerSecond;
 
