@@ -16,6 +16,9 @@ import soundtab.audio.playback;
 import soundtab.audio.instruments;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
+    import soundtab.ui.frame;
+
+    SoundFrame _frame;
     SoundCanvas _soundCanvas;
     VerticalLayout _controlsLayout;
     Tablet _tablet;
@@ -34,15 +37,10 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
     PitchCorrector _corrector;
 
-    ~this() {
-        _tablet.uninit();
-        if (_playback) {
-            destroy(_playback);
-        }
-    }
-
-    this(Tablet tablet) {
+    this(SoundFrame frame, Tablet tablet, AudioPlayback playback) {
         super("synth");
+        _frame = frame;
+        _playback = playback;
         _tablet = tablet;
         _tablet.onProximity = this;
         _tablet.onPosition = this;
@@ -103,7 +101,6 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
-        _playback = new AudioPlayback();
         _instrument = new MyAudioSource();
         _playback.setSynth(_instrument);
         _playback.start();

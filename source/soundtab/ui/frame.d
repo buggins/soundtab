@@ -10,16 +10,26 @@ import soundtab.ui.actions;
 import derelict.wintab.wintab;
 import derelict.wintab.tablet;
 import soundtab.ui.synthwidget;
+import soundtab.audio.playback;
 
 class SoundFrame : AppFrame {
 
     SynthWidget _synth;
     Tablet _tablet;
+    AudioPlayback _playback;
 
     this(Tablet tablet) {
         _tablet = tablet;
+        _playback = new AudioPlayback();
         super();
         _appName = "SoundTab";
+    }
+
+    ~this() {
+        _tablet.uninit();
+        if (_playback) {
+            destroy(_playback);
+        }
     }
 
     /// create main menu
@@ -34,7 +44,7 @@ class SoundFrame : AppFrame {
 
     /// create app body widget
     override protected Widget createBody() {
-        _synth = new SynthWidget(_tablet);
+        _synth = new SynthWidget(this, _tablet, _playback);
         return _synth;
     }
 
