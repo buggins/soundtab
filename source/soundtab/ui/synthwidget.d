@@ -103,7 +103,6 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         _instrument = new MyAudioSource();
         _playback.setSynth(_instrument);
-        _playback.start();
 
         import derelict.mpg123;
         try {

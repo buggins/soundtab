@@ -150,9 +150,9 @@ class AudioPlayback : Thread {
         super(&run);
         _devices = new MMDevices();
         _devices.init();
-        MMDevice[] devices = getDevices();
-        if (devices.length > 0)
-            setDevice(devices[0]);
+        //MMDevice[] devices = getDevices();
+        //if (devices.length > 0)
+        //    setDevice(devices[0]);
     }
     ~this() {
         stop();
@@ -171,9 +171,17 @@ class AudioPlayback : Thread {
     private bool _stopped;
 
     private MMDevice _requestedDevice;
+    private bool _requestedExclusive;
+    private int _requestedMinFrameMillis;
     /// sets active device
-    private void setDevice(MMDevice device) {
+    public void setDevice(MMDevice device, bool exclusive = true, int minFrameMillis = 3) {
+        bool oldPaused = _paused;
         _requestedDevice = device;
+        _requestedExclusive = exclusive;
+        _requestedMinFrameMillis = minFrameMillis;
+        _paused = true;
+        sleep(dur!"msecs"(20));
+        _paused = oldPaused;
     }
     private MMDevice _currentDevice;
 
@@ -244,8 +252,7 @@ class AudioPlayback : Thread {
         return S_OK;
     }
 
-    private void playbackForDevice(MMDevice dev) {
-        bool exclusive = true;
+    private void playbackForDevice(MMDevice dev, bool exclusive, int minFrameMillis) {
         Log.d("playbackForDevice ", dev);
         MyAudioSource pMySource = _synth;
         HANDLE hEvent, hTask;
@@ -418,13 +425,13 @@ class AudioPlayback : Thread {
         priority = PRIORITY_MAX;
         try {
             while (!_stopped) {
-                MMDevice dev;
-                while (!dev && !_stopped) {
-                    dev = _requestedDevice;
-                    if (dev)
-                        break;
+                MMDevice dev = _requestedDevice;
+                bool exclusive = _requestedExclusive;
+                int minFrame = _requestedMinFrameMillis;
+                if (!dev) {
                     // waiting for device is set
                     sleep(dur!"msecs"(10));
+                    continue;
                 }
                 if (_paused) {
                     sleep(dur!"msecs"(10));
@@ -432,7 +439,7 @@ class AudioPlayback : Thread {
                 }
                 if (_stopped)
                     break;
-                playbackForDevice(dev);
+                playbackForDevice(dev, exclusive, minFrame);
                 _audioClient.clear();
             }
         } catch (Exception e) {
