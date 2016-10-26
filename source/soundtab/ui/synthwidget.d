@@ -133,7 +133,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         foreach(index, i; instr) {
             if (id == i.id) {
                 found = i;
-                foundIndex = index;
+                foundIndex = cast(int)index;
             }
         }
         _instrSelection.selectedItemIndex = foundIndex;
