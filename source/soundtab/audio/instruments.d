@@ -1,6 +1,7 @@
 module soundtab.audio.instruments;
 
 import dlangui.core.logger;
+import soundtab.ui.noteutil;
 
 enum SampleFormat {
     signed16,
@@ -26,6 +27,18 @@ int[] genWaveTableSin() {
     return res;
 }
 
+float[] genWaveTableSinF() {
+    import std.math;
+    float[] res;
+    res.length = WAVETABLE_SIZE;
+    for (int i = 0; i < WAVETABLE_SIZE; i++) {
+        double f = i * 2 * PI / WAVETABLE_SIZE;
+        double v = sin(f);
+        res[i] = cast(float)v;
+    }
+    return res;
+}
+
 int[] genWaveTableSquare() {
     import std.math;
     int[] res;
@@ -39,12 +52,29 @@ int[] genWaveTableSquare() {
     return res;
 }
 
+float[] genWaveTableSquareF() {
+    import std.math;
+    float[] res;
+    res.length = WAVETABLE_SIZE;
+    for (int i = 0; i < WAVETABLE_SIZE; i++) {
+        if (i < WAVETABLE_SIZE / 2)
+            res[i] = 1.0f;
+        else
+            res[i] = -1.0f;
+    }
+    return res;
+}
+
 __gshared int[] SIN_TABLE;
 __gshared int[] SQUARE_TABLE;
+__gshared float[] SIN_TABLE_F;
+__gshared float[] SQUARE_TABLE_F;
 
 __gshared static this() {
     SIN_TABLE = genWaveTableSin();
+    SIN_TABLE_F = genWaveTableSinF();
     SQUARE_TABLE = genWaveTableSquare();
+    SQUARE_TABLE_F = genWaveTableSquareF();
 }
 
 void interpolate(int[] arr, int startValue, int endValue) {
@@ -137,6 +167,55 @@ class Osciller {
     }
 }
 
+class OscillerF {
+    float[] _origWavetable;
+    float[] _wavetable;
+    float _scale;
+    float _offset;
+    int _phase; // *256
+    int _step;
+    this(float[] wavetable, float scale = 1.0f, float offset = 0) {
+        _origWavetable = wavetable;
+        rescale(scale, offset);
+    }
+    void rescale(float scale = 1.0f, float offset = 0) {
+        _scale = scale;
+        _offset = offset;
+        if (scale == 1.0f && offset == 0) {
+            _wavetable = _origWavetable;
+        } else {
+            _wavetable = _origWavetable.dup;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                _wavetable[i] = _origWavetable[i] * scale + offset;
+            }
+        }
+    }
+    void setStep(int step_mul_256) {
+        _step = step_mul_256;
+    }
+    /// set step based on pitch frequency (Hz) and samples per second
+    void setPitch(double freq, int samplesPerSecond) {
+        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
+    }
+    float step(int step_mul_256) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    // step by value with gain (*0x10000)
+    float stepWithGain(int step_mul_256, float gain) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8] * gain;
+    }
+    // use current step value
+    float step() {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    void resetPhase() {
+        _phase = 0;
+    }
+}
+
 /// for float->short conversion
 union ShortConv {
     short value;
@@ -147,6 +226,14 @@ union ShortConv {
 union FloatConv {
     float value;
     byte[4] bytes;
+}
+
+/// limit int value to fit short range -32768..32767
+void limitShortRange(ref int value) {
+    if (value < -32768)
+        value = -32768;
+    else if (value > 32767)
+        value = 32767;
 }
 
 class AudioSource {
@@ -192,6 +279,7 @@ class AudioSource {
     protected void onFormatChanged() {
     }
 
+    /// put samples in int format
     protected void putSamples(ubyte * buf, int sample1, int sample2) {
         if (sampleFormat == SampleFormat.float32) {
             FloatConv floatConv;
@@ -218,6 +306,42 @@ class AudioSource {
                 buf[2] = shortConv.bytes.ptr[0];
                 buf[3] = shortConv.bytes.ptr[1];
             }
+            // TODO: more channels
+        }
+    }
+
+    /// put samples in float format
+    protected void putSamples(ubyte * buf, float sample1, float sample2) {
+        if (sampleFormat == SampleFormat.float32) {
+            FloatConv floatConv;
+            floatConv.value = sample1;
+            buf[0] = floatConv.bytes.ptr[0];
+            buf[1] = floatConv.bytes.ptr[1];
+            buf[2] = floatConv.bytes.ptr[2];
+            buf[3] = floatConv.bytes.ptr[3];
+            if (channels > 1) {
+                floatConv.value = sample2;
+                buf[4] = floatConv.bytes.ptr[0];
+                buf[5] = floatConv.bytes.ptr[1];
+                buf[6] = floatConv.bytes.ptr[2];
+                buf[7] = floatConv.bytes.ptr[3];
+            }
+            // TODO: more channels
+        } else {
+            ShortConv shortConv;
+            int sample1i = cast(int)(sample1 * 32767.0f);
+            int sample2i = cast(int)(sample2 * 32767.0f);
+            limitShortRange(sample1i);
+            limitShortRange(sample2i);
+            shortConv.value = cast(short)(sample1i);
+            buf[0] = shortConv.bytes.ptr[0];
+            buf[1] = shortConv.bytes.ptr[1];
+            if (channels > 1) {
+                shortConv.value = cast(short)(sample2i);
+                buf[2] = shortConv.bytes.ptr[0];
+                buf[3] = shortConv.bytes.ptr[1];
+            }
+            // TODO: more channels
         }
     }
 
@@ -298,8 +422,142 @@ class Instrument : AudioSource {
         }
         _targetGain = gain;
     }
+
+    protected int freqToStepMul256(double freq) {
+        double onePeriodSamples = samplesPerSecond / freq;
+        double step = WAVETABLE_SIZE / onePeriodSamples;
+        return cast(int)(step * 256);
+    }
 }
 
+/// i is [0..len-1], interpolate from startValue to endValue
+int interpolate(int i, int len, int startValue, int endValue) {
+    return startValue + (endValue - startValue) * i / len;
+}
+
+/// i is [0..len-1], interpolate from startValue to endValue
+float interpolate(int i, int len, float startValue, float endValue) {
+    return startValue + (endValue - startValue) * i / len;
+}
+
+void interpolateTable(ref float[] table, int len, float startValue, float endValue) {
+    if (table.length < len)
+        table.length = len;
+    float v = startValue;
+    float step = (endValue - startValue) / len;
+    for (int i = 0; i < len; i++) {
+        table.ptr[i] = v;
+        v += step;
+    }
+}
+
+void interpolateTable(ref int[] table, int len, int startValue, int endValue) {
+    if (table.length < len)
+        table.length = len;
+    int v = startValue;
+    int step = (endValue - startValue) / len;
+    int dstep = (endValue - startValue) % len;
+    for (int i = 0; i < len; i++) {
+        table.ptr[i] = v;
+        v += step;
+        if (dstep > 0) {
+            v++;
+            dstep--;
+        } else if (dstep < 0) {
+            v--;
+            dstep++;
+        }
+    }
+}
+
+/// float calculations instrument base class
+class InstrumentBaseF : Instrument {
+    protected double _currentPitch = 0; // Hz
+    protected float _currentGain = 0; // 0..1
+    protected float _currentController1 = 0; // 0..1
+
+    protected int _phase_mul_256 = 0;
+
+    protected int _target_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
+    protected int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
+    protected float _target_gain = 0;
+    protected float _target_controller1 = 0;
+    protected float _gain = 0;
+    protected float _controller1 = 0;
+    protected float[] _gainTable;
+    protected float[] _controller1Table;
+
+    protected float _targetVibratoAmount;
+    protected float _targetVibratoFreq = 5;
+    protected float _currentVibratoAmount;
+    protected float _currentVibratoFreq = 5;
+    protected int _target_vibrato_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
+
+    protected override void calcParams() {
+        // copy dynamic values
+        _currentPitch = _targetPitch;
+        _currentGain = _targetGain;
+        _currentController1 = _targetController1;
+        _currentVibratoAmount = _targetVibratoAmount;
+        _currentVibratoFreq = _targetVibratoFreq;
+        _target_step_mul_256 = freqToStepMul256(_currentPitch);
+        _target_gain = _currentGain;
+        _target_controller1 = _currentController1;
+        _target_vibrato_step_mul_256 = freqToStepMul256(_currentVibratoFreq);
+    }
+
+    protected void interpolateParams(int frameCount) {
+        int frameMillis = frameCount < 10 ? 10 : 1000 * frameCount / samplesPerSecond;
+
+        float lastGain = _gain;
+        float lastController1 = _controller1;
+
+        _step_mul_256 = _target_step_mul_256;
+        _controller1 = _target_controller1;
+
+        if (_gain < _target_gain) {
+            // attack
+            if (frameMillis >= _attack)
+                _gain = _target_gain;
+            else {
+                _gain = _gain + (_target_gain - _gain) * frameMillis / _attack;
+            }
+        } else {
+            // release
+            if (frameMillis >= _release)
+                _gain = _target_gain;
+            else {
+                _gain = _gain + (_target_gain - _gain) * frameMillis / _release;
+            }
+        }
+        interpolateTable(_gainTable, frameCount, lastGain, _gain);
+        interpolateTable(_controller1Table, frameCount, lastController1, _controller1);
+    }
+
+    override protected void onFormatChanged() {
+        _phase_mul_256 = 0;
+    }
+
+    /// returns true if controller value is set, false for unknown controller
+    override bool updateController(string controllerName, int value) {
+        switch(controllerName) {
+            case "vibratoAmount":
+                // 0 .. 1/8 tone
+                _targetVibratoAmount = QUARTER_TONE / 2 * value / 1000.0f;
+                break;
+            case "vibratoFreq":
+                // 1 .. 20 hz
+                _targetVibratoFreq = 1 + value * 20 / 1000;
+                break;
+            default:
+                break;
+        }
+        return false;
+    }
+
+}
+
+/// integer calculations instrument base class
 class InstrumentBase : Instrument {
     protected double _currentPitch = 0; // Hz
     protected double _currentGain = 0; // 0..1
@@ -326,11 +584,69 @@ class InstrumentBase : Instrument {
         _target_controller1_mul_65536 = cast(int)(_currentController1 * 0x10000);
     }
 
+    override protected void onFormatChanged() {
+        _phase_mul_256 = 0;
+    }
 }
 
-/// i is [0..len-1], interpolate from startValue to endValue
-int interpolate(int i, int len, int startValue, int endValue) {
-    return startValue + (endValue - startValue) * i / len;
+class SineWave : InstrumentBaseF {
+    OscillerF _tone1;
+    float[] _wavetable;
+    this() {
+        _id = "sinewave";
+        _name = "Sine Wave";
+        _wavetable = SIN_TABLE_F;
+        _tone1 = new OscillerF(_wavetable);
+    }
+
+    override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
+        {
+            lock();
+            scope(exit)unlock();
+            calcParams();
+        }
+
+        interpolateParams(frameCount);
+
+        for (int i = 0; i < frameCount; i++) {
+            /// one step
+            float gain = _gainTable.ptr[i];
+            float controller1 = _controller1Table.ptr[i];
+
+            float gain1 = gain; //cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
+            float gain2 = gain; //cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
+
+            int step = _step_mul_256; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);
+
+            float sample = _tone1.step(step) * gain;
+
+            putSamples(buf, sample, sample);
+
+            buf += blockAlign;
+        }
+
+        // TODO
+        //durationCounter--;
+        flags = 0; //durationCounter <= 0 ? AUDCLNT_BUFFERFLAGS.AUDCLNT_BUFFERFLAGS_SILENT : 0;
+        //Log.d("Instrument loadData - exit");
+        return true;
+    }
+
+    /// returns list of supported controllers
+    override immutable(Controller)[] getControllers() {
+        Controller[] res;
+        //res ~= Controller("chorus", "Chorus", 0, 1000, 300);
+        //res ~= Controller("reverb", "Reverb", 0, 1000, 300);
+        res ~= Controller("vibrato", "Vibrato Amount", 0, 1000, 300);
+        res ~= Controller("vibratoFreq", "Vibrato Freq", 0, 1000, 500);
+        return cast(immutable(Controller)[])res;
+    }
+
+    /// returns true if controller value is set, false for unknown controller
+    override bool updateController(string controllerName, int value) {
+        return false;
+    }
+
 }
 
 class MyAudioSource : InstrumentBase {
@@ -515,6 +831,11 @@ class MyAudioSource : InstrumentBase {
         return cast(immutable(Controller)[])res;
     }
 
+    /// returns true if controller value is set, false for unknown controller
+    override bool updateController(string controllerName, int value) {
+        return false;
+    }
+
 }
 
 private __gshared Instrument[] _instrumentList;
@@ -522,6 +843,7 @@ private __gshared Instrument[] _instrumentList;
 Instrument[] getInstrumentList() {
     if (!_instrumentList.length) {
         _instrumentList ~= new MyAudioSource();
+        _instrumentList ~= new SineWave();
     }
     return _instrumentList;
 }
