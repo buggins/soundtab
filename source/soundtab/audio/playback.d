@@ -168,9 +168,9 @@ class AudioPlayback : Thread {
             _devices = null;
         }
     }
-    private MyAudioSource _synth;
+    private Instrument _synth;
     private MMDevices _devices;
-    void setSynth(MyAudioSource synth) {
+    void setSynth(Instrument synth) {
         lockedPausedAction({
             _synth = synth;
         });
@@ -311,7 +311,7 @@ class AudioPlayback : Thread {
 
     private void playbackForDevice(MMDevice dev, bool exclusive, int minFrameMillis) {
         Log.d("playbackForDevice ", dev);
-        MyAudioSource pMySource = _synth;
+        Instrument pMySource = _synth;
         HANDLE hEvent, hTask;
         if (!pMySource)
             return;

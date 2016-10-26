@@ -27,6 +27,18 @@ class AudioSettings : SettingsFile {
         return res;
     }
 
+    @property Setting instrumentSettings() {
+        Setting res = _setting.objectByPath("instrument", true);
+        return res;
+    }
+
+    @property Setting controllerSettings() {
+        string instr = instrumentId;
+        Setting res = _setting.objectByPath("controllerSettings", true);
+        res = res.objectByPath(instr, true);
+        return res;
+    }
+
     @property string playbackDevice() {
         return audioSettings.getString("device", "default");
     }
@@ -44,6 +56,26 @@ class AudioSettings : SettingsFile {
         return cast(int)audioSettings.getInteger("minFrameMillis", 3);
     }
 
+    @property string instrumentId() {
+        return instrumentSettings.getString("instrumentId", "ethereal");
+    }
+
+    @property AudioSettings instrumentId(string instrId) {
+        instrumentSettings.setString("instrumentId", instrId);
+        return this;
+    }
+
+    AudioSettings setControllerValue(string controllerId, int value) {
+        Setting s = controllerSettings();
+        s.setInteger(controllerId, value);
+        return this;
+    }
+
+    int getControllerValue(string controllerId, int defValue) {
+        Setting s = controllerSettings();
+        int res = cast(int)s.getInteger(controllerId, defValue);
+        return res;
+    }
 }
 
 SettingsPage createSettingsPages(StringListValue[] deviceList) {

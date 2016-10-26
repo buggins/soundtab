@@ -241,9 +241,18 @@ class AudioSource {
 struct Controller {
     string id;
     dstring name;
+    int minValue;
+    int maxValue;
+    int value;
 }
 
 class Instrument : AudioSource {
+
+    protected string _id;
+    protected dstring _name;
+
+    @property dstring name() { return _name; }
+    @property string id() { return _id; }
 
     protected double _targetPitch = 1000; // Hz
     protected double _targetGain = 0; // 0..1
@@ -354,6 +363,8 @@ class MyAudioSource : InstrumentBase {
     Osciller _tone25;
 
     this() {
+        _id = "ethereal";
+        _name = "Ethereal";
         _wavetable = SIN_TABLE; //genWaveTableSquare(); //genWaveTableSin();
         //_wavetable = genWaveTableSquare(); //genWaveTableSin();
         _vibrato0 = new Osciller(SIN_TABLE, 500, 0x10000);
@@ -493,5 +504,24 @@ class MyAudioSource : InstrumentBase {
         //Log.d("Instrument loadData - exit");
         return true;
     }
+
+    /// returns list of supported controllers
+    override immutable(Controller)[] getControllers() {
+        Controller[] res;
+        res ~= Controller("chorus", "Chorus", 0, 1000, 300);
+        res ~= Controller("reverb", "Reverb", 0, 1000, 300);
+        res ~= Controller("vibrato", "Vibrato Amount", 0, 1000, 300);
+        res ~= Controller("vibratoFreq", "Vibrato Freq", 0, 1000, 500);
+        return cast(immutable(Controller)[])res;
+    }
+
 }
 
+private __gshared Instrument[] _instrumentList;
+/// get list of supported instruments
+Instrument[] getInstrumentList() {
+    if (!_instrumentList.length) {
+        _instrumentList ~= new MyAudioSource();
+    }
+    return _instrumentList;
+}

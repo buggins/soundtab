@@ -19,10 +19,13 @@ class SliderController : GroupBox {
         super(ID, label);
         _slider = new SliderWidget(null, Orientation.Horizontal);
         _slider.setRange(minValue, maxValue);
-        _slider.position = minValue;
+        _slider.position = value;
         _slider.scrollEvent = &onScrollEvent;
         addChild(_slider);
     }
+
+    @property int value() { return _slider.position; }
+    @property SliderController value(int newValue) { _slider.position = newValue; return this; }
 
     protected bool onScrollEvent(AbstractSlider source, ScrollEvent event) {
         if (onChange.assigned)

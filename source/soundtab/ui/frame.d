@@ -53,6 +53,7 @@ class SoundFrame : AppFrame {
     }
 
     ~this() {
+        _settings.save();
         _tablet.uninit();
         if (_playback) {
             destroy(_playback);

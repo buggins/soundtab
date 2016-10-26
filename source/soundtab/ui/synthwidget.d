@@ -26,7 +26,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     NoteRangeWidget _noteRangeWidget;
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
-    MyAudioSource _instrument;
+    Instrument _instrument;
+    HorizontalLayout _controllers;
 
     ComboBox _instrSelection;
     SliderController _chorus;
@@ -59,32 +60,42 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsh.margins = Rect(3,3,3,3);
         _controlsLayout.addChild(_controlsh);
 
-        StringListValue[] instrList = [
-            StringListValue("Ethereal", "Ethereal"d),
-            StringListValue("SineWave", "Sine Wave"d)
-        ];
+        int corrValue = _frame.settings.getControllerValue("pitchCorrection", 0);
+        _pitchCorrection = new SliderController("pitchCorrection", "Pitch correction", 0, 1000, corrValue);
+        _pitchCorrection.onChange = &onController;
+
+        Instrument[] instr = getInstrumentList();
+        StringListValue[] instrList;
+        foreach(i; instr) {
+            instrList ~= StringListValue(i.id, i.name);
+        }
         GroupBox gb = new GroupBox("instrgb", "Instrument"d);
+        string instrId = _frame.settings.instrumentId;
         _instrSelection = new ComboBox("instrument", instrList);
-        _instrSelection.selectedItemIndex = 0;
+        int instrIndex = 0;
+        for (int i = 0; i < instr.length; i++) {
+            if (instr[i].id == instrId)
+                instrIndex = i;
+        }
+        _controllers = new HorizontalLayout();
+        setInstrument(instrId);
+        _instrSelection.itemClick = delegate(Widget source, int itemIndex) {
+            Instrument ins = instr[itemIndex];
+            setInstrument(ins.id);
+            if (_frame.settings.instrumentId != id) {
+                _frame.settings.instrumentId = id;
+                _frame.settings.save();
+            }
+            return true;
+        };
         gb.addChild(_instrSelection);
         _controlsh.addChild(gb);
+        _controlsh.addChild(_controllers);
 
-        _chorus = new SliderController("chorus", "Chorus", 0, 1000, 0);
-        _controlsh.addChild(_chorus);
 
-        _reverb = new SliderController("reverb", "Reverb", 0, 1000, 0);
-        _controlsh.addChild(_reverb);
-
-        _vibrato = new SliderController("vibrato", "Vibrato amount", 0, 1000, 0);
-        _controlsh.addChild(_vibrato);
-
-        _vibratoFreq = new SliderController("vibratoFreq", "Vibrato freq", 0, 1000, 0);
-        _controlsh.addChild(_vibratoFreq);
 
         _controlsh.addChild(new HSpacer());
 
-        _pitchCorrection = new SliderController("pitchCorrection", "Pitch correction", 0, 1000, 0);
-        _pitchCorrection.onChange = &onController;
         _controlsh.addChild(_pitchCorrection);
 
         _pitchWidget = new PitchWidget();
@@ -102,8 +113,6 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
-        _instrument = new MyAudioSource();
-        _playback.setSynth(_instrument);
 
         import derelict.mpg123;
         try {
@@ -115,6 +124,46 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
     }
 
+    void setInstrument(string id) {
+        if (_instrument && _instrument.id == id)
+            return;
+        Instrument[] instr = getInstrumentList();
+        Instrument found = instr[0];
+        int foundIndex = 0;
+        foreach(index, i; instr) {
+            if (id == i.id) {
+                found = i;
+                foundIndex = index;
+            }
+        }
+        _instrSelection.selectedItemIndex = foundIndex;
+        _instrument = found;
+
+        createControllers();
+
+        _playback.setSynth(_instrument);
+    }
+
+    /// create controllers for current instrument; set current values from settings
+    void createControllers() {
+        _controllers.removeAllChildren();
+        immutable(Controller[]) controllers = _instrument.getControllers();
+        foreach(controller; controllers) {
+            int value = controller.value;
+            value = _frame.settings.getControllerValue(controller.id, value);
+            if (value < controller.minValue)
+                value = controller.minValue;
+            else if (value > controller.maxValue)
+                value = controller.maxValue;
+            SliderController w = new SliderController(controller.id, controller.name, controller.minValue, controller.maxValue, value);
+            w.onChange = &onController;
+            _controllers.addChild(w);
+        }
+        int corrValue = _frame.settings.getControllerValue("pitchCorrection", 0);
+        _corrector.amount = corrValue;
+        _pitchCorrection.value = corrValue;
+    }
+
     void onController(SliderController source, int value) {
         switch (source.id) {
             case "pitchCorrection":
@@ -123,6 +172,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             default:
                 break;
         }
+        _frame.settings.setControllerValue(source.id, value);
     }
 
     void onNoteRangeChange(int minNote, int maxNote) {
