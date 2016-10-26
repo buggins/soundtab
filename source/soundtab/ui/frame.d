@@ -24,6 +24,7 @@ class SoundFrame : AppFrame {
     Tablet _tablet;
     AudioPlayback _playback;
     AudioSettings _settings;
+    long _statusTimer;
 
     this(Win32Window window) {
         _tablet = new Tablet();
@@ -31,7 +32,24 @@ class SoundFrame : AppFrame {
         _tablet.init(window.windowHandle);
         super();
         applySettings(_settings);
+        window.mainWidget = this;
+        _statusTimer = setTimer(100);
         _playback.start();
+    }
+
+    private string _lastStatusText;
+    override bool onTimer(ulong id) {
+        if (id == _statusTimer) {
+            import std.utf : toUTF32;
+            string status = _playback.stateString;
+            if (status != _lastStatusText) {
+                statusLine.setStatusText(status.toUTF32);
+                _lastStatusText = status;
+            }
+            return true;
+        } else {
+            return super.onTimer(id);
+        }
     }
 
     ~this() {

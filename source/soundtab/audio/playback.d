@@ -146,8 +146,15 @@ HRESULT GetStreamFormat(AUDCLNT_SHAREMODE mode, IAudioClient _audioClient, ref W
 /// call start() to enable thread
 /// use paused property to pause thread
 class AudioPlayback : Thread {
+
+    import core.sync.mutex;
+    private Mutex _mutex;
+    void lock() { _mutex.lock(); }
+    void unlock() { _mutex.unlock(); }
+
     this() {
         super(&run);
+        _mutex = new Mutex();
         _devices = new MMDevices();
         _devices.init();
         //MMDevice[] devices = getDevices();
@@ -164,24 +171,74 @@ class AudioPlayback : Thread {
     private MyAudioSource _synth;
     private MMDevices _devices;
     void setSynth(MyAudioSource synth) {
-        _synth = synth;
+        lockedPausedAction({
+            _synth = synth;
+        });
     }
+
     private bool _running;
     private bool _paused;
     private bool _stopped;
 
+    private string _stateString = "No device selected";
+    @property string stateString() {
+        lock();
+        scope(exit)unlock();
+        return _stateString;
+    }
+
     private MMDevice _requestedDevice;
     private bool _requestedExclusive;
     private int _requestedMinFrameMillis;
+
+    private void lockedPausedAction(void delegate() action) {
+        bool oldPaused = _paused;
+        {
+            lock();
+            scope(exit)unlock();
+            action();
+        }
+        if (running) {
+            _paused = true;
+            // pause to apply changed settings
+            sleep(dur!"msecs"(20));
+            _paused = oldPaused;
+        }
+    }
+
+    private void updateStateString(string deviceName, bool paused, bool exclusive, int bufferMillis) {
+        char[] res;
+        if (deviceName.length) {
+            res ~= deviceName;
+            if (paused) {
+                res ~= " [paused]";
+            } else {
+                if (exclusive)
+                    res ~= " [exclusive mode] ";
+                else
+                    res ~= " [shared mode] ";
+                if (bufferMillis) {
+                    import std.conv : to;
+                    res ~= "buffer:";
+                    res ~= to!string(bufferMillis);
+                    res ~= "ms";
+                }
+            }
+        } else {
+            res ~= "[no playback device selected]";
+        }
+        lock();
+        scope(exit)unlock();
+        _stateString = res.dup;
+    }
+
     /// sets active device
     public void setDevice(MMDevice device, bool exclusive = true, int minFrameMillis = 3) {
-        bool oldPaused = _paused;
-        _requestedDevice = device;
-        _requestedExclusive = exclusive;
-        _requestedMinFrameMillis = minFrameMillis;
-        _paused = true;
-        sleep(dur!"msecs"(20));
-        _paused = oldPaused;
+        lockedPausedAction({
+            _requestedDevice = device;
+            _requestedExclusive = exclusive;
+            _requestedMinFrameMillis = minFrameMillis;
+        });
     }
     private MMDevice _currentDevice;
 
@@ -293,14 +350,11 @@ class AudioPlayback : Thread {
         Log.d("defPeriod=", defaultDevicePeriod, " minPeriod=", minimumDevicePeriod);
         if (exclusive) {
             REFERENCE_TIME requestedPeriod = minimumDevicePeriod;
-            if (requestedPeriod * 4 < 70000)
-                requestedPeriod *= 4;
-            else 
-            if (requestedPeriod * 3 < 70000)
-                requestedPeriod *= 3;
-            else 
-            if (requestedPeriod * 2 < 70000)
-                requestedPeriod *= 2;
+            for(int n = 1; n < 10; n++) {
+                requestedPeriod = minimumDevicePeriod * n;
+                if (requestedPeriod >= minFrameMillis * 10000)
+                    break;
+            }
             Log.d("exclusive mode, requested period=", requestedPeriod);
             hr = _audioClient.Initialize(
                     AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_EXCLUSIVE,
@@ -309,6 +363,7 @@ class AudioPlayback : Thread {
                     requestedPeriod, //hnsRequestedDuration, // 0
                     mixFormat,
                     null);
+            //updateStateString(dev.friendlyName, false, exclusive, cast(int)(requestedPeriod / 10000));
         } else {
             hr = _audioClient.Initialize(
                     AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
@@ -331,6 +386,10 @@ class AudioPlayback : Thread {
 
         hr = _audioClient.GetBufferSize(bufferFrameCount);
         if (checkError(hr, "AudioClient.GetBufferSize failed")) return;
+        //if (!exclusive) {
+            int millis = cast(int)(1000 * bufferFrameCount / mixFormat.nSamplesPerSec);
+            updateStateString(dev.friendlyName, false, exclusive, millis);
+        //}
         Log.d("Buffer frame count: ", bufferFrameCount);
         hr = _audioClient.GetStreamLatency(streamLatency);
         if (checkError(hr, "AudioClient.GetStreamLatency failed")) return;
@@ -425,15 +484,23 @@ class AudioPlayback : Thread {
         priority = PRIORITY_MAX;
         try {
             while (!_stopped) {
-                MMDevice dev = _requestedDevice;
-                bool exclusive = _requestedExclusive;
-                int minFrame = _requestedMinFrameMillis;
+                MMDevice dev;
+                bool exclusive;
+                int minFrame;
+                {
+                    lock();
+                    scope(exit)unlock();
+                    dev = _requestedDevice;
+                    exclusive = _requestedExclusive;
+                    minFrame = _requestedMinFrameMillis;
+                }
                 if (!dev) {
                     // waiting for device is set
                     sleep(dur!"msecs"(10));
                     continue;
                 }
                 if (_paused) {
+                    updateStateString(dev ? dev.friendlyName : null, true, exclusive, 0);
                     sleep(dur!"msecs"(10));
                     continue;
                 }
