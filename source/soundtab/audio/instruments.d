@@ -182,6 +182,7 @@ class OscillerF {
             _wavetable = _origWavetable;
         } else {
             _wavetable = _origWavetable.dup;
+            float maxAmp = 0;
             for (int i = 0; i < _origWavetable.length; i++) {
                 float v = _origWavetable[i];
                 if (formants.length) {
@@ -190,7 +191,15 @@ class OscillerF {
                         v += _origWavetable[i * j % _origWavetable.length] * formants[j];
                     }
                 }
-                _wavetable[i] = v * scale + offset;
+                _wavetable[i] = v;
+                if (v > maxAmp)
+                    maxAmp = v;
+                else if (-v > maxAmp)
+                    maxAmp = -v;
+            }
+            float mult = 1 / maxAmp;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                _wavetable[i] = _wavetable[i] * mult * scale + offset;
             }
         }
     }
@@ -849,7 +858,7 @@ class SineHarmonicWaveTable : InstrumentBaseF {
 
             if (hasChorus) {
                 float chorus = _chorus.next;
-                float chorusGain = gain * chorus * 9 / 10;
+                float chorusGain = gain * chorus * 7 / 10;
                 gain -= chorusGain;
                 float chorus1 = _chorusVibrato1.step(chorusVibratoStep1);
                 float chorus2 = _chorusVibrato2.step(chorusVibratoStep2);
@@ -1137,6 +1146,7 @@ Instrument[] getInstrumentList() {
         _instrumentList ~= new MyAudioSource();
         _instrumentList ~= new SineHarmonicWaveTable("sinewave", "Sine Wave", null);
         _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.5, 0.3, -0.1, 0.05, -0.03]);
+        _instrumentList ~= new SineHarmonicWaveTable("strings2", "Strings 2", [0.5, -0.4, 0.3, -0.3, 0.25, -0.3, 0.15, -0.15]);
     }
     return _instrumentList;
 }

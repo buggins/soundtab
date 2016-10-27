@@ -86,6 +86,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
                 _frame.settings.instrumentId = ins.id;
                 _frame.settings.save();
             }
+            createControllers();
             return true;
         };
         gb.addChild(_instrSelection);
