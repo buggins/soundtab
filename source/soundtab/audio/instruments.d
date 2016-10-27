@@ -2,6 +2,7 @@ module soundtab.audio.instruments;
 
 import dlangui.core.logger;
 import soundtab.ui.noteutil;
+import std.math : log2, exp2, sin, PI;
 
 enum SampleFormat {
     signed16,
@@ -16,7 +17,6 @@ immutable WAVETABLE_SCALE_BITS = 14;
 immutable WAVETABLE_SCALE = (1 << WAVETABLE_SCALE_BITS);
 
 int[] genWaveTableSin() {
-    import std.math;
     int[] res;
     res.length = WAVETABLE_SIZE;
     for (int i = 0; i < WAVETABLE_SIZE; i++) {
@@ -28,7 +28,6 @@ int[] genWaveTableSin() {
 }
 
 float[] genWaveTableSinF() {
-    import std.math;
     float[] res;
     res.length = WAVETABLE_SIZE;
     for (int i = 0; i < WAVETABLE_SIZE; i++) {
@@ -40,7 +39,6 @@ float[] genWaveTableSinF() {
 }
 
 int[] genWaveTableSquare() {
-    import std.math;
     int[] res;
     res.length = WAVETABLE_SIZE;
     for (int i = 0; i < WAVETABLE_SIZE; i++) {
@@ -53,7 +51,6 @@ int[] genWaveTableSquare() {
 }
 
 float[] genWaveTableSquareF() {
-    import std.math;
     float[] res;
     res.length = WAVETABLE_SIZE;
     for (int i = 0; i < WAVETABLE_SIZE; i++) {
@@ -380,6 +377,7 @@ enum ControllerId {
     VibratoFreq,
     Chorus,
     Reverb,
+    Distortion,
 }
 
 struct Controller {
@@ -402,6 +400,14 @@ struct Interpolator {
         _value = v;
         _step = _dstep = 0;
         _const = true;
+        _zero = (_value == 0);
+    }
+    /// reset to target value
+    void reset() {
+        _value = _target;
+        _step = _dstep = 0;
+        _const = true;
+        _zero = (_value == 0);
     }
     /// set target value for interpolation
     @property void target(int newValue) {
@@ -458,6 +464,13 @@ struct InterpolatorF {
         _step = 0;
         _const = true;
         _zero = (v == 0);
+    }
+    /// reset to target
+    void reset() {
+        _value = _target;
+        _step = 0;
+        _const = true;
+        _zero = (_value == 0);
     }
     /// returns true if interpolator will return const value
     @property bool isConst() { return _const; }
@@ -611,10 +624,12 @@ class InstrumentBaseF : Instrument {
     InterpolatorF _vibratoAmount;
     Interpolator  _vibratoFreq;
     InterpolatorF _chorus;
+    InterpolatorF _distortion;
 
     float _targetVibratoAmount = 0;
     float _targetVibratoFreq = 10;
     float _targetChorus = 0;
+    float _targetDistortion = 0;
 
     protected override void calcParams() {
         // copy dynamic values
@@ -624,6 +639,7 @@ class InstrumentBaseF : Instrument {
         _controller1.target = _targetController1;
         _vibratoAmount.target = _targetVibratoAmount;
         _vibratoFreq.target = freqToStepMul256(_targetVibratoFreq);
+        _distortion.target = _targetDistortion;
     }
 
     protected void interpolateParams(int frameCount) {
@@ -631,13 +647,20 @@ class InstrumentBaseF : Instrument {
 
         _gain.limitTargetChange(frameMillis, _attack, _release);
         _gain.init(frameCount);
-        if (_gain.value < 0.001f)
-            _pitch.reset(_pitch.target);
+        if (_gain.value < 0.001f) {
+            _pitch.reset();
+            _chorus.reset();
+            _controller1.reset();
+            _vibratoAmount.reset();
+            _vibratoFreq.reset();
+            _distortion.reset();
+        }
         _pitch.init(frameCount);
         _chorus.init(frameCount);
         _controller1.init(frameCount);
         _vibratoAmount.init(frameCount);
         _vibratoFreq.init(frameCount);
+        _distortion.init(frameCount);
     }
 
     override protected void onFormatChanged() {
@@ -645,7 +668,6 @@ class InstrumentBaseF : Instrument {
 
     /// returns true if controller value is set, false for unknown controller
     override bool updateController(ControllerId id, int value) {
-        import std.math : log2, exp2;
         switch(id) {
             case ControllerId.VibratoAmount:
                 // 0 .. 1/8 tone
@@ -660,6 +682,9 @@ class InstrumentBaseF : Instrument {
             case ControllerId.Chorus:
                 // 1 .. 20 hz
                 _targetChorus = value / 1000.0f;
+                break;
+            case ControllerId.Distortion:
+                _targetDistortion = value / 1000.0f;
                 break;
             default:
                 break;
@@ -701,7 +726,21 @@ class InstrumentBase : Instrument {
     }
 }
 
-class SineWave : InstrumentBaseF {
+void limitDistortion(ref float v) {
+    if (v < -0.9f) {
+        float delta = -v - 0.9f;
+        // map delta 0..5 -> 0..0.1
+        delta = log2(delta + 1) / 40;
+        v = -0.9f - delta;
+    } else if (v > 0.9f) {
+        float delta = v - 0.9f;
+        delta = log2(delta + 1) / 40;
+        v = 0.9f + delta;
+    }
+        
+}
+
+class SineHarmonicWaveTable : InstrumentBaseF {
     OscillerF _tone1;
     OscillerF _chorusTone1;
     OscillerF _chorusTone2;
@@ -721,12 +760,11 @@ class SineWave : InstrumentBaseF {
     OscillerF _chorusVibrato7;
     OscillerF _chorusVibrato8;
     float[] _wavetable;
-    this() {
-        _id = "sinewave";
-        _name = "Sine Wave";
+    this(string id, dstring name, immutable(float[])formants = null) {
+        _id = id;
+        _name = name;
         _wavetable = SIN_TABLE_F;
-        immutable(float[]) formants = null;
-        //immutable(float[]) formants = [0.7, 0.5, 0.3, 0.1, 0.05, 0.05];
+        //immutable(float[]) formants = null;
         //_tone1 = new OscillerF(_wavetable, 1, 0, [0.7, 0.5, 0.3, 0.1, 0.05, 0.05]);
         _tone1 = new OscillerF(_wavetable, 1, 0, formants);
         _chorusTone1 = new OscillerF(_wavetable, 1, 0, formants);
@@ -738,23 +776,27 @@ class SineWave : InstrumentBaseF {
         _chorusTone7 = new OscillerF(_wavetable, 1, 0, formants);
         _chorusTone8 = new OscillerF(_wavetable, 1, 0, formants);
         _vibrato1 = new OscillerF(SIN_TABLE_F);
-        _chorusVibrato1 = new OscillerF(SIN_TABLE_F, 0.0012, 1.001, [0.4, 0.3, 0.2, 0.1, 0.05, 0.02]);
-        _chorusVibrato2 = new OscillerF(SIN_TABLE_F, 0.0023, 1.002, [-0.7,-0.2, 0.2,-0.1, 0.1, 0.02]);
-        _chorusVibrato3 = new OscillerF(SIN_TABLE_F, 0.0034, 0.999, [-0.3,-0.3, 0.2,-0.2, 0.15, 0.02]);
-        _chorusVibrato4 = new OscillerF(SIN_TABLE_F, 0.0015, 0.998, [0.45, 0.3, 0.2, 0.1, 0.02, 0.02]);
-        _chorusVibrato5 = new OscillerF(SIN_TABLE_F, 0.0023, 0.999, [0.21, 0.3, 0.2, 0.1, 0.03, 0.02]);
-        _chorusVibrato6 = new OscillerF(SIN_TABLE_F, 0.0031, 0.998, [-0.42, 0.1, 0.2, 0.1, 0.01, 0.02]);
-        _chorusVibrato7 = new OscillerF(SIN_TABLE_F, 0.0017, 1.001, [0.13, -0.3, 0.3, 0.1, 0.08, 0.02]);
-        _chorusVibrato8 = new OscillerF(SIN_TABLE_F, 0.0023, 1.002, [0.31, 0.1, 0.2, 0.05, 0.02, 0.02]);
+        _chorusVibrato1 = new OscillerF(SIN_TABLE_F, 0.00312, 1.000, [0.4, -0.3, 0.2, 0.1, 0.05, 0.02, 0.01, -0.01]);
+        _chorusVibrato2 = new OscillerF(SIN_TABLE_F, 0.00323, 1.002, [0.2,-0.2, 0.2,-0.1, 0.3, 0.02, 0.01, -0.01]);
+        _chorusVibrato3 = new OscillerF(SIN_TABLE_F, 0.00334, 0.999, [0.3,-0.3, 0.2,-0.2, 0.15, 0.02, 0.01, -0.01]);
+        _chorusVibrato4 = new OscillerF(SIN_TABLE_F, 0.00315, 0.998, [0.45, 0.1, 0.2, 0.1, 0.02, 0.1, 0.01, -0.01]);
+        _chorusVibrato5 = new OscillerF(SIN_TABLE_F, 0.00323, 1.000, [0.31, -0.2, 0.2, 0.3, 0.03, 0.1, 0.01, -0.01]);
+        _chorusVibrato6 = new OscillerF(SIN_TABLE_F, 0.00331, 1.002, [0.42, 0.1, -0.2, 0.1, 0.01, 0.02, 0.01, -0.01]);
+        _chorusVibrato7 = new OscillerF(SIN_TABLE_F, 0.00317, 0.999, [0.13, -0.3, 0.3, 0.1, 0.08, 0.02, 0.01, -0.01]);
+        _chorusVibrato8 = new OscillerF(SIN_TABLE_F, 0.00323, 0.998, [0.21, 0.2, 0.2, 0.05, 0.02, 0.02, 0.01, -0.01]);
     }
 
 
     void resetPhase() {
         _tone1.resetPhase();
-        //_tone2.resetPhase();
-        //_tone3.resetPhase();
-        //_tone4.resetPhase();
-        //_tone5.resetPhase();
+        _chorusTone1.resetPhase();
+        _chorusTone2.resetPhase();
+        _chorusTone3.resetPhase();
+        _chorusTone4.resetPhase();
+        _chorusTone5.resetPhase();
+        _chorusTone6.resetPhase();
+        _chorusTone7.resetPhase();
+        _chorusTone8.resetPhase();
     }
 
     override protected void onFormatChanged() {
@@ -781,15 +823,16 @@ class SineWave : InstrumentBaseF {
 
         bool hasVibrato = !_vibratoAmount.isZero;
         bool hasChorus = !_chorus.isZero;
-        float chorusSample = 0;
-        int chorusVibratoStep1 = freqToStepMul256( 1.23124f);
-        int chorusVibratoStep2 = freqToStepMul256( 2.52334f);
-        int chorusVibratoStep3 = freqToStepMul256( 3.1223f);
-        int chorusVibratoStep4 = freqToStepMul256( 1.32234f);
-        int chorusVibratoStep5 = freqToStepMul256( 1.433f);
-        int chorusVibratoStep6 = freqToStepMul256( 1.3746f);
-        int chorusVibratoStep7 = freqToStepMul256( 2.9845f);
-        int chorusVibratoStep8 = freqToStepMul256( 2.43675f);
+        float chorusSample1 = 0;
+        float chorusSample2 = 0;
+        int chorusVibratoStep1 = freqToStepMul256( 1.2354124f);
+        int chorusVibratoStep2 = freqToStepMul256( 3.53452334f);
+        int chorusVibratoStep3 = freqToStepMul256( 2.1234523f);
+        int chorusVibratoStep4 = freqToStepMul256( 0.7234543234f);
+        int chorusVibratoStep5 = freqToStepMul256( 0.43453f);
+        int chorusVibratoStep6 = freqToStepMul256( 2.334245746f);
+        int chorusVibratoStep7 = freqToStepMul256( 1.984545f);
+        int chorusVibratoStep8 = freqToStepMul256( 1.6332675f);
         for (int i = 0; i < frameCount; i++) {
             /// one step
             float gain = _gain.next;
@@ -806,9 +849,8 @@ class SineWave : InstrumentBaseF {
 
             if (hasChorus) {
                 float chorus = _chorus.next;
-                float chorusGain = gain * chorus / 2;
+                float chorusGain = gain * chorus * 9 / 10;
                 gain -= chorusGain;
-                chorusGain /= 8;
                 float chorus1 = _chorusVibrato1.step(chorusVibratoStep1);
                 float chorus2 = _chorusVibrato2.step(chorusVibratoStep2);
                 float chorus3 = _chorusVibrato3.step(chorusVibratoStep3);
@@ -825,20 +867,50 @@ class SineWave : InstrumentBaseF {
                 int step6 = cast(int)(chorus6 * step);
                 int step7 = cast(int)(chorus7 * step);
                 int step8 = cast(int)(chorus8 * step);
-                chorusSample = (
-                      _chorusTone1.step(step1)
-                    + _chorusTone2.step(step2)
-                    + _chorusTone3.step(step3)
-                    + _chorusTone4.step(step4)
-                    + _chorusTone5.step(step5)
-                    + _chorusTone6.step(step6)
-                    + _chorusTone7.step(step7)
-                    + _chorusTone8.step(step8)) * chorusGain;
+                chorus1 = _chorusTone1.step(step1);
+                chorus2 = _chorusTone2.step(step2);
+                chorus3 = _chorusTone3.step(step3);
+                chorus4 = _chorusTone4.step(step4);
+                chorus5 = _chorusTone5.step(step5);
+                chorus6 = _chorusTone6.step(step6);
+                chorus7 = _chorusTone7.step(step7);
+                chorus8 = _chorusTone8.step(step8);
+                chorusSample1 = (
+                      -chorus1
+                    + chorus2
+                    + chorus5/3
+                    + chorus6/4
+                    - chorus7/4
+                    - chorus8/3
+                    + chorus3
+                    + chorus4) / 6;
+                chorusSample2 = (
+                    chorus5
+                    + chorus6
+                    - chorus1/3
+                    + chorus2/4
+                    - chorus3/4
+                    - chorus4/3
+                    + chorus7
+                    + chorus8) / 6;
             }
 
-            float sample = _tone1.step(step) * gain + chorusSample;
+            float sample = _tone1.step(step);
+            float sample1 = (sample + chorusSample1);
+            float sample2 = (sample + chorusSample2);
+            if (!_distortion.isZero) {
+                float distort = 1 + _distortion.next * 5;
+                sample1 *= distort;
+                sample1 *= distort;
+                limitDistortion(sample1);
+                limitDistortion(sample2);
+            }
+            sample1 *= gain;
+            sample2 *= gain;
+            limitDistortion(sample1);
+            limitDistortion(sample2);
 
-            putSamples(buf, sample, sample);
+            putSamples(buf, sample1, sample2);
 
             buf += blockAlign;
         }
@@ -858,6 +930,7 @@ class SineWave : InstrumentBaseF {
         res ~= Controller(ControllerId.VibratoAmount, "Vibrato Amount", 0, 1000, 300);
         res ~= Controller(ControllerId.VibratoFreq, "Vibrato Freq", 0, 1000, 500);
         res ~= Controller(ControllerId.Chorus, "Chorus", 0, 1000, 0);
+        res ~= Controller(ControllerId.Distortion, "Distortion", 0, 1000, 0);
         return cast(immutable(Controller)[])res;
     }
 
@@ -1062,7 +1135,8 @@ private __gshared Instrument[] _instrumentList;
 Instrument[] getInstrumentList() {
     if (!_instrumentList.length) {
         _instrumentList ~= new MyAudioSource();
-        _instrumentList ~= new SineWave();
+        _instrumentList ~= new SineHarmonicWaveTable("sinewave", "Sine Wave", null);
+        _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.5, 0.3, -0.1, 0.05, -0.03]);
     }
     return _instrumentList;
 }
