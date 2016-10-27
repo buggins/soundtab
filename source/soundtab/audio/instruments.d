@@ -174,19 +174,26 @@ class OscillerF {
     float _offset;
     int _phase; // *256
     int _step;
-    this(float[] wavetable, float scale = 1.0f, float offset = 0) {
+    this(float[] wavetable, float scale = 1.0f, float offset = 0, immutable(float[]) formants = null) {
         _origWavetable = wavetable;
-        rescale(scale, offset);
+        rescale(scale, offset, formants);
     }
-    void rescale(float scale = 1.0f, float offset = 0) {
+    void rescale(float scale = 1.0f, float offset = 0, immutable(float[]) formants = null) {
         _scale = scale;
         _offset = offset;
-        if (scale == 1.0f && offset == 0) {
+        if (scale == 1.0f && offset == 0 && !formants.length) {
             _wavetable = _origWavetable;
         } else {
             _wavetable = _origWavetable.dup;
             for (int i = 0; i < _origWavetable.length; i++) {
-                _wavetable[i] = _origWavetable[i] * scale + offset;
+                float v = _origWavetable[i];
+                if (formants.length) {
+                    v *= formants[0];
+                    for (int j = 2; j < formants.length; j++) {
+                        v += _origWavetable[i * j % _origWavetable.length] * formants[j];
+                    }
+                }
+                _wavetable[i] = v * scale + offset;
             }
         }
     }
@@ -198,6 +205,11 @@ class OscillerF {
         _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
     }
     float step(int step_mul_256) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    float stepPitchMultiply(int step_mul_256, int mult_by_100000) {
+        step_mul_256 = cast(int)((cast(long)step_mul_256 * mult_by_100000) / 100000);
         _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
         return _wavetable[_phase >> 8];
     }
@@ -598,16 +610,17 @@ class InstrumentBaseF : Instrument {
     InterpolatorF _controller1;
     InterpolatorF _vibratoAmount;
     Interpolator  _vibratoFreq;
+    InterpolatorF _chorus;
 
     float _targetVibratoAmount = 0;
     float _targetVibratoFreq = 10;
-
-    protected int _phase_mul_256 = 0;
+    float _targetChorus = 0;
 
     protected override void calcParams() {
         // copy dynamic values
         _pitch.target = freqToStepMul256(_targetPitch);
         _gain.target = _targetGain;
+        _chorus.target = _targetChorus;
         _controller1.target = _targetController1;
         _vibratoAmount.target = _targetVibratoAmount;
         _vibratoFreq.target = freqToStepMul256(_targetVibratoFreq);
@@ -618,14 +631,16 @@ class InstrumentBaseF : Instrument {
 
         _gain.limitTargetChange(frameMillis, _attack, _release);
         _gain.init(frameCount);
+        if (_gain.value < 0.001f)
+            _pitch.reset(_pitch.target);
         _pitch.init(frameCount);
+        _chorus.init(frameCount);
         _controller1.init(frameCount);
         _vibratoAmount.init(frameCount);
         _vibratoFreq.init(frameCount);
     }
 
     override protected void onFormatChanged() {
-        _phase_mul_256 = 0;
     }
 
     /// returns true if controller value is set, false for unknown controller
@@ -640,7 +655,11 @@ class InstrumentBaseF : Instrument {
                 break;
             case ControllerId.VibratoFreq:
                 // 1 .. 20 hz
-                _targetVibratoFreq = 1 + value * 15 / 1000;
+                _targetVibratoFreq = 1 + value * 15 / 1000.0f;
+                break;
+            case ControllerId.Chorus:
+                // 1 .. 20 hz
+                _targetChorus = value / 1000.0f;
                 break;
             default:
                 break;
@@ -684,15 +703,64 @@ class InstrumentBase : Instrument {
 
 class SineWave : InstrumentBaseF {
     OscillerF _tone1;
-    OscillerF  _vibrato1;
+    OscillerF _chorusTone1;
+    OscillerF _chorusTone2;
+    OscillerF _chorusTone3;
+    OscillerF _chorusTone4;
+    OscillerF _chorusTone5;
+    OscillerF _chorusTone6;
+    OscillerF _chorusTone7;
+    OscillerF _chorusTone8;
+    OscillerF _vibrato1;
+    OscillerF _chorusVibrato1;
+    OscillerF _chorusVibrato2;
+    OscillerF _chorusVibrato3;
+    OscillerF _chorusVibrato4;
+    OscillerF _chorusVibrato5;
+    OscillerF _chorusVibrato6;
+    OscillerF _chorusVibrato7;
+    OscillerF _chorusVibrato8;
     float[] _wavetable;
     this() {
         _id = "sinewave";
         _name = "Sine Wave";
         _wavetable = SIN_TABLE_F;
-        _tone1 = new OscillerF(_wavetable);
+        immutable(float[]) formants = null;
+        //immutable(float[]) formants = [0.7, 0.5, 0.3, 0.1, 0.05, 0.05];
+        //_tone1 = new OscillerF(_wavetable, 1, 0, [0.7, 0.5, 0.3, 0.1, 0.05, 0.05]);
+        _tone1 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone1 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone2 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone3 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone4 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone5 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone6 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone7 = new OscillerF(_wavetable, 1, 0, formants);
+        _chorusTone8 = new OscillerF(_wavetable, 1, 0, formants);
         _vibrato1 = new OscillerF(SIN_TABLE_F);
+        _chorusVibrato1 = new OscillerF(SIN_TABLE_F, 0.0012, 1.001, [0.4, 0.3, 0.2, 0.1, 0.05, 0.02]);
+        _chorusVibrato2 = new OscillerF(SIN_TABLE_F, 0.0023, 1.002, [-0.7,-0.2, 0.2,-0.1, 0.1, 0.02]);
+        _chorusVibrato3 = new OscillerF(SIN_TABLE_F, 0.0034, 0.999, [-0.3,-0.3, 0.2,-0.2, 0.15, 0.02]);
+        _chorusVibrato4 = new OscillerF(SIN_TABLE_F, 0.0015, 0.998, [0.45, 0.3, 0.2, 0.1, 0.02, 0.02]);
+        _chorusVibrato5 = new OscillerF(SIN_TABLE_F, 0.0023, 0.999, [0.21, 0.3, 0.2, 0.1, 0.03, 0.02]);
+        _chorusVibrato6 = new OscillerF(SIN_TABLE_F, 0.0031, 0.998, [-0.42, 0.1, 0.2, 0.1, 0.01, 0.02]);
+        _chorusVibrato7 = new OscillerF(SIN_TABLE_F, 0.0017, 1.001, [0.13, -0.3, 0.3, 0.1, 0.08, 0.02]);
+        _chorusVibrato8 = new OscillerF(SIN_TABLE_F, 0.0023, 1.002, [0.31, 0.1, 0.2, 0.05, 0.02, 0.02]);
     }
+
+
+    void resetPhase() {
+        _tone1.resetPhase();
+        //_tone2.resetPhase();
+        //_tone3.resetPhase();
+        //_tone4.resetPhase();
+        //_tone5.resetPhase();
+    }
+
+    override protected void onFormatChanged() {
+        resetPhase();
+    }
+
 
     override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
         {
@@ -707,27 +775,68 @@ class SineWave : InstrumentBaseF {
             // silent
             flags = 0;
             generateSilence(frameCount, buf);
+            resetPhase();
             return true;
         }
 
+        bool hasVibrato = !_vibratoAmount.isZero;
+        bool hasChorus = !_chorus.isZero;
+        float chorusSample = 0;
+        int chorusVibratoStep1 = freqToStepMul256( 1.23124f);
+        int chorusVibratoStep2 = freqToStepMul256( 2.52334f);
+        int chorusVibratoStep3 = freqToStepMul256( 3.1223f);
+        int chorusVibratoStep4 = freqToStepMul256( 1.32234f);
+        int chorusVibratoStep5 = freqToStepMul256( 1.433f);
+        int chorusVibratoStep6 = freqToStepMul256( 1.3746f);
+        int chorusVibratoStep7 = freqToStepMul256( 2.9845f);
+        int chorusVibratoStep8 = freqToStepMul256( 2.43675f);
         for (int i = 0; i < frameCount; i++) {
             /// one step
             float gain = _gain.next;
             float controller1 = _controller1.next;
 
-            //float gain1 = gain; //cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
-            //float gain2 = gain; //cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
-
             int step = _pitch.next; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);
             // apply vibrato
-            if (!_vibratoAmount.isZero) {
+            if (hasVibrato) {
                 int vibratoStep = _vibratoFreq.next;
                 float vibratoAmount = _vibratoAmount.next;
                 float vibrato = _vibrato1.step(vibratoStep) * vibratoAmount + 1;
                 step = cast(int)(step * vibrato);
             }
 
-            float sample = _tone1.step(step) * gain;
+            if (hasChorus) {
+                float chorus = _chorus.next;
+                float chorusGain = gain * chorus / 2;
+                gain -= chorusGain;
+                chorusGain /= 8;
+                float chorus1 = _chorusVibrato1.step(chorusVibratoStep1);
+                float chorus2 = _chorusVibrato2.step(chorusVibratoStep2);
+                float chorus3 = _chorusVibrato3.step(chorusVibratoStep3);
+                float chorus4 = _chorusVibrato4.step(chorusVibratoStep4);
+                float chorus5 = _chorusVibrato5.step(chorusVibratoStep5);
+                float chorus6 = _chorusVibrato6.step(chorusVibratoStep6);
+                float chorus7 = _chorusVibrato7.step(chorusVibratoStep7);
+                float chorus8 = _chorusVibrato8.step(chorusVibratoStep8);
+                int step1 = cast(int)(chorus1 * step);
+                int step2 = cast(int)(chorus2 * step);
+                int step3 = cast(int)(chorus3 * step);
+                int step4 = cast(int)(chorus4 * step);
+                int step5 = cast(int)(chorus5 * step);
+                int step6 = cast(int)(chorus6 * step);
+                int step7 = cast(int)(chorus7 * step);
+                int step8 = cast(int)(chorus8 * step);
+                chorusSample = (
+                      _chorusTone1.step(step1)
+                    + _chorusTone2.step(step2)
+                    + _chorusTone3.step(step3)
+                    + _chorusTone4.step(step4)
+                    + _chorusTone5.step(step5)
+                    + _chorusTone6.step(step6)
+                    + _chorusTone7.step(step7)
+                    + _chorusTone8.step(step8)) * chorusGain;
+            }
+
+            float sample = _tone1.step(step) * gain + chorusSample;
 
             putSamples(buf, sample, sample);
 
@@ -748,6 +857,7 @@ class SineWave : InstrumentBaseF {
         //res ~= Controller("reverb", "Reverb", 0, 1000, 300);
         res ~= Controller(ControllerId.VibratoAmount, "Vibrato Amount", 0, 1000, 300);
         res ~= Controller(ControllerId.VibratoFreq, "Vibrato Freq", 0, 1000, 500);
+        res ~= Controller(ControllerId.Chorus, "Chorus", 0, 1000, 0);
         return cast(immutable(Controller)[])res;
     }
 
