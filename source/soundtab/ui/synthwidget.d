@@ -82,8 +82,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _instrSelection.itemClick = delegate(Widget source, int itemIndex) {
             Instrument ins = instr[itemIndex];
             setInstrument(ins.id);
-            if (_frame.settings.instrumentId != id) {
-                _frame.settings.instrumentId = id;
+            if (_frame.settings.instrumentId != ins.id) {
+                _frame.settings.instrumentId = ins.id;
                 _frame.settings.save();
             }
             return true;
