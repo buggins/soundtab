@@ -370,6 +370,120 @@ struct Controller {
     int value;
 }
 
+struct Interpolator {
+    private int _target;
+    private int _value;
+    private int _step;
+    private int _dstep;
+    private bool _const = true;
+    private bool _zero = true;
+    /// reset to const
+    void reset(int v) {
+        _value = v;
+        _step = _dstep = 0;
+        _const = true;
+    }
+    /// set target value for interpolation
+    @property void target(int newValue) {
+        _target = newValue;
+    }
+    /// get target value
+    @property int target() { return _target; }
+    /// get current value
+    @property int value() { return _value; }
+    /// returns true if interpolator will return const value
+    @property bool isConst() { return _const; }
+    /// returns true if interpolator will return const value 0
+    @property bool isZero() { return _zero; }
+    /// set interpolation parameters to interpolate values in range _value .. _newValue in len frames
+    void init(int len) {
+        if (_target == _value) {
+            _const = true;
+            _zero = (_value == 0);
+        } else {
+            _const = false;
+            _zero = false;
+            int delta = _target - _value;
+            _step = delta / len;
+            _dstep = delta % len;
+        }
+    }
+    /// get next interpolated value
+    @property int next() {
+        if (_const)
+            return _value;
+        int res = _value;
+        _value += _step;
+        if (_dstep > 0) {
+            _value++;
+            _dstep--;
+        } else if (_dstep < 0) {
+            _value--;
+            _dstep++;
+        }
+        return res;
+    }
+}
+
+/// float value interpolator
+struct InterpolatorF {
+    private float _target = 0;
+    private float _value = 0;
+    private float _step = 0;
+    private bool _const = true;
+    private bool _zero = true;
+    /// reset to const
+    void reset(float v) {
+        _value = v;
+        _step = 0;
+        _const = true;
+        _zero = (v == 0);
+    }
+    /// returns true if interpolator will return const value
+    @property bool isConst() { return _const; }
+    /// returns true if interpolator will return const value 0
+    @property bool isZero() { return _zero; }
+    /// set target value for interpolation
+    @property void target(float newValue) {
+        _target = newValue;
+    }
+    /// get target value
+    @property float target() { return _target; }
+    /// get current value
+    @property float value() { return _value; }
+    /// set interpolation parameters to interpolate values in range _value .. _target in len frames
+    void init(int len) {
+        _step = (_target - _value) / len;
+        if (_step >= -0.0000000001f && _step <= 0.0000000001f) {
+            _const = true;
+            _zero = (_value >= -0.000001f && _value <= 0.000001f);
+        } else {
+            _const = false;
+            _zero = false;
+        }
+    }
+    /// get next interpolated value
+    @property float next() {
+        if (_const)
+            return _value;
+        float res = _value;
+        _value += _step;
+        return res;
+    }
+    /// limit speed of target change 
+    void limitTargetChange(int frameMillis, int attackMillis, int releaseMillis) {
+        if (_value < _target) {
+            // attack
+            if (frameMillis < attackMillis)
+                _target = _value + (_target - _value) * frameMillis / attackMillis;
+        } else {
+            // release
+            if (frameMillis < releaseMillis)
+                _target = _value + (_target - _value) * frameMillis / releaseMillis;
+        }
+    }
+}
+
 class Instrument : AudioSource {
 
     protected string _id;
@@ -378,9 +492,9 @@ class Instrument : AudioSource {
     @property dstring name() { return _name; }
     @property string id() { return _id; }
 
-    protected double _targetPitch = 1000; // Hz
-    protected double _targetGain = 0; // 0..1
-    protected double _targetController1 = 0;
+    protected float _targetPitch = 1000; // Hz
+    protected float _targetGain = 0; // 0..1
+    protected float _targetController1 = 0;
 
     protected int _attack = 20;
     protected int _release = 40;
@@ -395,7 +509,7 @@ class Instrument : AudioSource {
         return false;
     }
 
-    void setSynthParams(double pitch, double gain, double controller1) {
+    void setSynthParams(float pitch, float gain, float controller1) {
         lock();
         scope(exit)unlock();
 
@@ -423,10 +537,8 @@ class Instrument : AudioSource {
         _targetGain = gain;
     }
 
-    protected int freqToStepMul256(double freq) {
-        double onePeriodSamples = samplesPerSecond / freq;
-        double step = WAVETABLE_SIZE / onePeriodSamples;
-        return cast(int)(step * 256);
+    protected int freqToStepMul256(float freq) {
+        return cast(int)(WAVETABLE_SIZE * freq / samplesPerSecond * 256);
     }
 }
 
@@ -472,66 +584,36 @@ void interpolateTable(ref int[] table, int len, int startValue, int endValue) {
 
 /// float calculations instrument base class
 class InstrumentBaseF : Instrument {
-    protected double _currentPitch = 0; // Hz
-    protected float _currentGain = 0; // 0..1
-    protected float _currentController1 = 0; // 0..1
+
+    Interpolator  _pitch;
+    InterpolatorF _gain;
+    InterpolatorF _controller1;
+    InterpolatorF _vibratoAmount;
+    Interpolator  _vibratoFreq;
+
+    float _targetVibratoAmount = 0;
+    float _targetVibratoFreq = 10;
 
     protected int _phase_mul_256 = 0;
 
-    protected int _target_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
-    protected int _step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
-    protected float _target_gain = 0;
-    protected float _target_controller1 = 0;
-    protected float _gain = 0;
-    protected float _controller1 = 0;
-    protected float[] _gainTable;
-    protected float[] _controller1Table;
-
-    protected float _targetVibratoAmount;
-    protected float _targetVibratoFreq = 5;
-    protected float _currentVibratoAmount;
-    protected float _currentVibratoFreq = 5;
-    protected int _target_vibrato_step_mul_256 = 0; // step*256 inside wavetable to generate requested frequency
-
     protected override void calcParams() {
         // copy dynamic values
-        _currentPitch = _targetPitch;
-        _currentGain = _targetGain;
-        _currentController1 = _targetController1;
-        _currentVibratoAmount = _targetVibratoAmount;
-        _currentVibratoFreq = _targetVibratoFreq;
-        _target_step_mul_256 = freqToStepMul256(_currentPitch);
-        _target_gain = _currentGain;
-        _target_controller1 = _currentController1;
-        _target_vibrato_step_mul_256 = freqToStepMul256(_currentVibratoFreq);
+        _pitch.target = freqToStepMul256(_targetPitch);
+        _gain.target = _targetGain;
+        _controller1.target = _targetController1;
+        _vibratoAmount.target = _targetVibratoAmount;
+        _vibratoFreq.target = freqToStepMul256(_targetVibratoFreq);
     }
 
     protected void interpolateParams(int frameCount) {
         int frameMillis = frameCount < 10 ? 10 : 1000 * frameCount / samplesPerSecond;
 
-        float lastGain = _gain;
-        float lastController1 = _controller1;
-
-        _step_mul_256 = _target_step_mul_256;
-        _controller1 = _target_controller1;
-
-        if (_gain < _target_gain) {
-            // attack
-            if (frameMillis >= _attack)
-                _gain = _target_gain;
-            else {
-                _gain = _gain + (_target_gain - _gain) * frameMillis / _attack;
-            }
-        } else {
-            // release
-            if (frameMillis >= _release)
-                _gain = _target_gain;
-            else {
-                _gain = _gain + (_target_gain - _gain) * frameMillis / _release;
-            }
-        }
-        interpolateTable(_gainTable, frameCount, lastGain, _gain);
-        interpolateTable(_controller1Table, frameCount, lastController1, _controller1);
+        _gain.limitTargetChange(frameMillis, _attack, _release);
+        _gain.init(frameCount);
+        _pitch.init(frameCount);
+        _controller1.init(frameCount);
+        _vibratoAmount.init(frameCount);
+        _vibratoFreq.init(frameCount);
     }
 
     override protected void onFormatChanged() {
@@ -610,13 +692,13 @@ class SineWave : InstrumentBaseF {
 
         for (int i = 0; i < frameCount; i++) {
             /// one step
-            float gain = _gainTable.ptr[i];
-            float controller1 = _controller1Table.ptr[i];
+            float gain = _gain.next;
+            float controller1 = _controller1.next;
 
-            float gain1 = gain; //cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
-            float gain2 = gain; //cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
+            //float gain1 = gain; //cast(int)((cast(long)gain * gain_vibrato) >> 16); // left
+            //float gain2 = gain; //cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
 
-            int step = _step_mul_256; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);
+            int step = _pitch.next; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);
 
             float sample = _tone1.step(step) * gain;
 
