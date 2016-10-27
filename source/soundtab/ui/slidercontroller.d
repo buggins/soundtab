@@ -6,6 +6,9 @@ import dlangui.widgets.controls;
 import dlangui.widgets.scrollbar;
 import dlangui.widgets.groupbox;
 import dlangui.core.signals;
+import std.conv : to;
+
+import soundtab.audio.instruments;
 
 interface SliderControllerHandler {
     void onController(SliderController source, int value);
@@ -14,9 +17,13 @@ interface SliderControllerHandler {
 class SliderController : GroupBox {
     Signal!SliderControllerHandler onChange;
     private SliderWidget _slider;
+    private ControllerId _controllerId;
 
-    this(string ID, dstring label, int minValue, int maxValue, int value) {
-        super(ID, label);
+    @property ControllerId controllerId() { return _controllerId; }
+
+    this(ControllerId ID, dstring label, int minValue, int maxValue, int value) {
+        super(to!string(ID), label);
+        _controllerId = ID;
         _slider = new SliderWidget(null, Orientation.Horizontal);
         _slider.setRange(minValue, maxValue);
         _slider.position = value;

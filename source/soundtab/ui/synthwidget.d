@@ -60,8 +60,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsh.margins = Rect(3,3,3,3);
         _controlsLayout.addChild(_controlsh);
 
-        int corrValue = _frame.settings.getControllerValue("pitchCorrection", 0);
-        _pitchCorrection = new SliderController("pitchCorrection", "Pitch correction", 0, 1000, corrValue);
+        int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
+        _pitchCorrection = new SliderController(ControllerId.PitchCorrection, "Pitch correction", 0, 1000, corrValue);
         _pitchCorrection.onChange = &onController;
 
         Instrument[] instr = getInstrumentList();
@@ -158,8 +158,9 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             SliderController w = new SliderController(controller.id, controller.name, controller.minValue, controller.maxValue, value);
             w.onChange = &onController;
             _controllers.addChild(w);
+            _instrument.updateController(controller.id, value);
         }
-        int corrValue = _frame.settings.getControllerValue("pitchCorrection", 0);
+        int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
         _corrector.amount = corrValue;
         _pitchCorrection.value = corrValue;
     }
@@ -172,7 +173,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             default:
                 break;
         }
-        _frame.settings.setControllerValue(source.id, value);
+        _frame.settings.setControllerValue(source.controllerId, value);
+        _instrument.updateController(source.controllerId, value);
     }
 
     void onNoteRangeChange(int minNote, int maxNote) {

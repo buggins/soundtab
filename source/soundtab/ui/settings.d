@@ -4,6 +4,7 @@ import dlangui.core.settings;
 import dlangui.dialogs.settingsdialog;
 import dlangui.core.i18n;
 import dlangui.widgets.lists;
+import soundtab.audio.instruments;
 
 /// local settings for project (not supposed to put under source control)
 class AudioSettings : SettingsFile {
@@ -65,15 +66,17 @@ class AudioSettings : SettingsFile {
         return this;
     }
 
-    AudioSettings setControllerValue(string controllerId, int value) {
+    AudioSettings setControllerValue(ControllerId controllerId, int value) {
+        import std.conv : to;
         Setting s = controllerSettings();
-        s.setInteger(controllerId, value);
+        s.setInteger(to!string(controllerId), value);
         return this;
     }
 
-    int getControllerValue(string controllerId, int defValue) {
+    int getControllerValue(ControllerId controllerId, int defValue) {
+        import std.conv : to;
         Setting s = controllerSettings();
-        int res = cast(int)s.getInteger(controllerId, defValue);
+        int res = cast(int)s.getInteger(to!string(controllerId), defValue);
         return res;
     }
 }

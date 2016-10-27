@@ -362,8 +362,16 @@ class AudioSource {
     }
 }
 
+enum ControllerId {
+    PitchCorrection,
+    VibratoAmount,
+    VibratoFreq,
+    Chorus,
+    Reverb,
+}
+
 struct Controller {
-    string id;
+    ControllerId id;
     dstring name;
     int minValue;
     int maxValue;
@@ -505,7 +513,7 @@ class Instrument : AudioSource {
     }
 
     /// returns true if controller value is set, false for unknown controller
-    bool updateController(string controllerName, int value) {
+    bool updateController(ControllerId id, int value) {
         return false;
     }
 
@@ -621,15 +629,18 @@ class InstrumentBaseF : Instrument {
     }
 
     /// returns true if controller value is set, false for unknown controller
-    override bool updateController(string controllerName, int value) {
-        switch(controllerName) {
-            case "vibratoAmount":
+    override bool updateController(ControllerId id, int value) {
+        import std.math : log2, exp2;
+        switch(id) {
+            case ControllerId.VibratoAmount:
                 // 0 .. 1/8 tone
-                _targetVibratoAmount = QUARTER_TONE / 2 * value / 1000.0f;
+                double lsAmount = ((value / 1000.0) / 4 / 12); // quarter_tone
+                double n = exp2(lsAmount) - 1;
+                _targetVibratoAmount = n; //exp2(log2(QUARTER_TONE) / 3 * value / 1000.0f);
                 break;
-            case "vibratoFreq":
+            case ControllerId.VibratoFreq:
                 // 1 .. 20 hz
-                _targetVibratoFreq = 1 + value * 20 / 1000;
+                _targetVibratoFreq = 1 + value * 15 / 1000;
                 break;
             default:
                 break;
@@ -673,12 +684,14 @@ class InstrumentBase : Instrument {
 
 class SineWave : InstrumentBaseF {
     OscillerF _tone1;
+    OscillerF  _vibrato1;
     float[] _wavetable;
     this() {
         _id = "sinewave";
         _name = "Sine Wave";
         _wavetable = SIN_TABLE_F;
         _tone1 = new OscillerF(_wavetable);
+        _vibrato1 = new OscillerF(SIN_TABLE_F);
     }
 
     override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
@@ -690,6 +703,13 @@ class SineWave : InstrumentBaseF {
 
         interpolateParams(frameCount);
 
+        if (_gain.isZero) {
+            // silent
+            flags = 0;
+            generateSilence(frameCount, buf);
+            return true;
+        }
+
         for (int i = 0; i < frameCount; i++) {
             /// one step
             float gain = _gain.next;
@@ -699,6 +719,13 @@ class SineWave : InstrumentBaseF {
             //float gain2 = gain; //cast(int)((cast(long)gain * (0x20000 - gain_vibrato)) >> 16); // right
 
             int step = _pitch.next; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);
+            // apply vibrato
+            if (!_vibratoAmount.isZero) {
+                int vibratoStep = _vibratoFreq.next;
+                float vibratoAmount = _vibratoAmount.next;
+                float vibrato = _vibrato1.step(vibratoStep) * vibratoAmount + 1;
+                step = cast(int)(step * vibrato);
+            }
 
             float sample = _tone1.step(step) * gain;
 
@@ -719,14 +746,14 @@ class SineWave : InstrumentBaseF {
         Controller[] res;
         //res ~= Controller("chorus", "Chorus", 0, 1000, 300);
         //res ~= Controller("reverb", "Reverb", 0, 1000, 300);
-        res ~= Controller("vibrato", "Vibrato Amount", 0, 1000, 300);
-        res ~= Controller("vibratoFreq", "Vibrato Freq", 0, 1000, 500);
+        res ~= Controller(ControllerId.VibratoAmount, "Vibrato Amount", 0, 1000, 300);
+        res ~= Controller(ControllerId.VibratoFreq, "Vibrato Freq", 0, 1000, 500);
         return cast(immutable(Controller)[])res;
     }
 
     /// returns true if controller value is set, false for unknown controller
-    override bool updateController(string controllerName, int value) {
-        return false;
+    override bool updateController(ControllerId id, int value) {
+        return super.updateController(id, value);
     }
 
 }
@@ -906,16 +933,16 @@ class MyAudioSource : InstrumentBase {
     /// returns list of supported controllers
     override immutable(Controller)[] getControllers() {
         Controller[] res;
-        res ~= Controller("chorus", "Chorus", 0, 1000, 300);
-        res ~= Controller("reverb", "Reverb", 0, 1000, 300);
-        res ~= Controller("vibrato", "Vibrato Amount", 0, 1000, 300);
-        res ~= Controller("vibratoFreq", "Vibrato Freq", 0, 1000, 500);
+        res ~= Controller(ControllerId.Chorus, "Chorus", 0, 1000, 300);
+        res ~= Controller(ControllerId.Reverb, "Reverb", 0, 1000, 300);
+        res ~= Controller(ControllerId.VibratoAmount, "Vibrato Amount", 0, 1000, 300);
+        res ~= Controller(ControllerId.VibratoFreq, "Vibrato Freq", 0, 1000, 500);
         return cast(immutable(Controller)[])res;
     }
 
     /// returns true if controller value is set, false for unknown controller
-    override bool updateController(string controllerName, int value) {
-        return false;
+    override bool updateController(ControllerId id, int value) {
+        return super.updateController(id, value);
     }
 
 }
