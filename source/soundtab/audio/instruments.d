@@ -234,6 +234,17 @@ class OscillerF {
     }
 }
 
+class FilteringOsciller {
+    float[] _filter;
+    float[] _harmonics;
+    float[] _stepCoeffs;
+    this(float[] filter) {
+    }
+    float get(int phase) {
+        return 0;
+    }
+}
+
 /// for float->short conversion
 union ShortConv {
     short value;
