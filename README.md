@@ -1,9 +1,12 @@
 # SoundTab Theremin
 
-Wacom tablet synthesizer.
+Wacom tablet Theremin soft synthesizer.
 
 Play like on Theremin, but instead of moving hand in the air, move pen over wacom tablet. Volume is modulated by pen pressure, 
 instead of left hand movement in Theremin.
+
+![screenshot](https://buggins.github.io/soundtab/screenshots/soundtab-screenshot-1.png "screenshot")
+
 
 For better experience, use Wacom digitizer with pressure detection.
 
@@ -55,8 +58,9 @@ For better responsibility (lower latency), check Exclusive mode.
 
 If you hear glitches while sound playback, choose bigger value of Minimal Frame Length (milliseconds).
 
-Lowest latency is achivable on Win 10.
+Lowest latency is achievable on Win 10.
 
+![screenshot](https://buggins.github.io/soundtab/screenshots/soundtab-screenshot-2.png "screenshot")
 
 
 
