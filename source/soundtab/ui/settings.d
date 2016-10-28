@@ -58,7 +58,7 @@ class AudioSettings : SettingsFile {
     }
 
     @property string instrumentId() {
-        return instrumentSettings.getString("instrumentId", "ethereal");
+        return instrumentSettings.getString("instrumentId", "sinewave");
     }
 
     @property AudioSettings instrumentId(string instrId) {

@@ -1154,11 +1154,11 @@ private __gshared Instrument[] _instrumentList;
 /// get list of supported instruments
 Instrument[] getInstrumentList() {
     if (!_instrumentList.length) {
-        _instrumentList ~= new MyAudioSource();
         _instrumentList ~= new SineHarmonicWaveTable("sinewave", "Sine Wave", null);
         _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.6, 0.5, -0.4, 0.3, -0.2]);
         _instrumentList ~= new SineHarmonicWaveTable("strings2", "Strings 2", [0.5, -0.4, 0.3, -0.3, 0.25, -0.3, 0.15, -0.15, 0.1, -0.05, 0.04, -0.03, 0.02, -0.01]);
         _instrumentList ~= new SineHarmonicWaveTable("brass", "Brass", [0.1, -0.3, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 0.4, -0.35, 0.2, -0.1, 0.05, -0.02]);
+        _instrumentList ~= new MyAudioSource();
     }
     return _instrumentList;
 }
