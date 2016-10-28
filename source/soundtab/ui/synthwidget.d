@@ -115,14 +115,15 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
 
-        import derelict.mpg123;
-        try {
-            DerelictMPG123.load();
-            Log.d("libmpg123 shared library is loaded ok");
-        } catch (Exception e) {
-            Log.e("Cannot load libmpg123 shared library", e);
+        debug {
+            import derelict.mpg123;
+            try {
+                DerelictMPG123.load();
+                Log.d("libmpg123 shared library is loaded ok");
+            } catch (Exception e) {
+                Log.e("Cannot load libmpg123 shared library", e);
+            }
         }
-
     }
 
     void setInstrument(string id) {
