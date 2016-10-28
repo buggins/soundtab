@@ -1,0 +1,17 @@
+{
+    "name": "soundtab",
+    "description": "Theremin-like Synthesizer App with Wacom Tablet support",
+    "homepage": "https://github.com/buggins/soundtab",
+    "license": "Boost",
+    "authors": ["Vadim Lopatin"],
+
+    "targetName": "soundtab",
+    "targetPath": "bin",
+    "targetType": "executable",
+
+    "dependencies": {
+        "dlangui": "~>0.9.42",
+        "wasapi": "~>0.1.2",
+        "derelict-wintab": "~>0.1.2"
+    }
+}
