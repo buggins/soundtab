@@ -33,6 +33,7 @@ class NoteRangeWidget : Widget {
         _maxNote = fullNameToNote("B8");
         _rangeStart = fullNameToNote("C2");
         _rangeEnd = fullNameToNote("C6");
+        tooltipText = "Left mouse button - set range start; Right mous button - set range end";
     }
 
     void setPitch(double freq) {

@@ -12,6 +12,7 @@
     "dependencies": {
         "dlangui": "~>0.9.42",
         "wasapi": "~>0.1.2",
+        "derelict-mpg123": "~>0.1.1",
         "derelict-wintab": "~>0.1.2"
     }
 }
