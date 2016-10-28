@@ -12,6 +12,8 @@ For better experience, use Wacom digitizer with pressure detection.
 
 You can play with mouse as well, but w/o volume modulation (no pressure information), and less precise positioning.
 
+Written using DlangUI GUI library: [https://github.com/buggins/dlangui](https://github.com/buggins/dlangui)
+
 
 ## Supported platforms
 
