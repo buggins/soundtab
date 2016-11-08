@@ -8,7 +8,7 @@ import wasapi.comutils;
 import dlangui.core.logger;
 import std.string;
 import core.thread;
-import soundtab.audio.instruments;
+import soundtab.audio.audiosource;
 
 HRESULT GetStreamFormat(AUDCLNT_SHAREMODE mode, IAudioClient _audioClient, ref WAVEFORMATEXTENSIBLE mixFormat) {
     HRESULT hr;
@@ -168,9 +168,9 @@ class AudioPlayback : Thread {
             _devices = null;
         }
     }
-    private Instrument _synth;
+    private AudioSource _synth;
     private MMDevices _devices;
-    void setSynth(Instrument synth) {
+    void setSynth(AudioSource synth) {
         lockedPausedAction({
             _synth = synth;
         });
@@ -311,7 +311,7 @@ class AudioPlayback : Thread {
 
     private void playbackForDevice(MMDevice dev, bool exclusive, int minFrameMillis) {
         Log.d("playbackForDevice ", dev);
-        Instrument pMySource = _synth;
+        AudioSource pMySource = _synth;
         HANDLE hEvent, hTask;
         if (!pMySource)
             return;

@@ -120,6 +120,46 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             try {
                 DerelictMPG123.load();
                 Log.d("libmpg123 shared library is loaded ok");
+                mpg123_init();
+                int error = 0;
+                mpg123_handle * mh = mpg123_new(null, &error);
+                int res = mpg123_open(mh, "jmj-chronologie3.mp3");
+                if (res == MPG123_OK) {
+                    int channels = 0;
+                    int encoding = 0;
+                    int framesize = 1;
+                    int rate = 0;
+                    res =  mpg123_getformat(mh, &rate, &channels, &encoding);
+                    if (res == MPG123_OK) {
+                        Log.d("mp3 file rate=", rate, " channels=", channels, " enc=", encoding);
+                        int bufferSize = mpg123_outblock(mh);
+                        Log.d("buffer size=", bufferSize);
+                        ubyte[] buffer = new ubyte[bufferSize];
+                        short[] outbuffer;
+                        short * pbuf = cast(short*)buffer.ptr;
+                        outbuffer.assumeSafeAppend;
+                        uint done = 0;
+                        size_t bytesRead = 0;
+                        for (;;) {
+                            res = mpg123_read(mh, buffer.ptr, bufferSize, &done);
+                            if (res != MPG123_OK) {
+                                Log.d("Error while decoding: ", res);
+                                break;
+                            }
+                            bytesRead += bufferSize;
+                            if (!done) {
+                                break;
+                            }
+                            outbuffer ~= pbuf[0 .. done/2];
+                        }
+                        Log.d("Bytes decoded: ", bytesRead, " outBufferLength=", outbuffer.length);
+                    }
+
+                    mpg123_close(mh);
+                }
+
+                mpg123_delete(mh);
+                mpg123_exit();
             } catch (Exception e) {
                 Log.e("Cannot load libmpg123 shared library", e);
             }
