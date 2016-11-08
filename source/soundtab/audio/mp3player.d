@@ -117,15 +117,30 @@ class Mp3Player : AudioSource {
         scope(exit)unlock();
         flags = 0;
         // silence
-        if (!_loaded || !_sourceFrames || _sourcePosition >= _sourceFrames) {
+        if (!_loaded || !_sourceFrames || _zeroVolume || _sourcePosition >= _sourceFrames) {
             generateSilence(frameCount, buf);
+            flags |= AUDIO_SOURCE_SILENCE_FLAG;
             return true;
         }
         int i = 0;
         int srcpos = _sourcePosition * _sourceChannels;
         if (_sourceRate != samplesPerSecond) {
             // need resampling
-            // TODO
+            // simple get-nearest-frame resampler
+            int srcFrames = cast(int)(cast(long)frameCount * _sourceRate / samplesPerSecond);
+            for (; i < frameCount; i++) {
+                int index = (i * srcFrames / frameCount + _sourcePosition) * _sourceChannels;
+                if (index + _sourceChannels - 1 < _sourceData.length) {
+                    float sample1 = _sourceData.ptr[index] / 32768.0f;
+                    float sample2 = _sourceChannels > 1 ? _sourceData.ptr[index + 1] / 32768.0f : sample1;
+                    putSamples(buf, sample1, sample2);
+                } else {
+                    putSamples(buf, 0.0f, 0.0f);
+                }
+            }
+            _sourcePosition += srcFrames;
+            if (_sourcePosition > _sourceFrames)
+                _sourcePosition = _sourceFrames;
         } else {
             // no resampling
             for (; i < frameCount; i++) {
@@ -136,9 +151,9 @@ class Mp3Player : AudioSource {
                 if (_sourcePosition >= _sourceFrames)
                     break;
             }
-        }
-        for (; i < frameCount; i++) {
-            putSamples(buf, 0.0f, 0.0f);
+            for (; i < frameCount; i++) {
+                putSamples(buf, 0.0f, 0.0f);
+            }
         }
         return true;
     }

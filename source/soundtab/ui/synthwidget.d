@@ -14,6 +14,7 @@ import soundtab.ui.noterangewidget;
 import soundtab.ui.slidercontroller;
 import soundtab.audio.playback;
 import soundtab.audio.instruments;
+import soundtab.audio.audiosource;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     import soundtab.ui.frame;
@@ -26,6 +27,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     NoteRangeWidget _noteRangeWidget;
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
+    Mixer _mixer;
     Instrument _instrument;
     HorizontalLayout _controllers;
 
@@ -42,9 +44,12 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         super("synth");
         _frame = frame;
         _playback = playback;
+        _mixer = new Mixer();
+        _playback.setSynth(_mixer);
         _tablet = tablet;
         _tablet.onProximity = this;
         _tablet.onPosition = this;
+
 
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
@@ -114,61 +119,14 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
-
-        debug {
-            import derelict.mpg123;
-            try {
-                DerelictMPG123.load();
-                Log.d("libmpg123 shared library is loaded ok");
-                mpg123_init();
-                int error = 0;
-                mpg123_handle * mh = mpg123_new(null, &error);
-                int res = mpg123_open(mh, "jmj-chronologie3.mp3");
-                if (res == MPG123_OK) {
-                    int channels = 0;
-                    int encoding = 0;
-                    int framesize = 1;
-                    int rate = 0;
-                    res =  mpg123_getformat(mh, &rate, &channels, &encoding);
-                    if (res == MPG123_OK) {
-                        Log.d("mp3 file rate=", rate, " channels=", channels, " enc=", encoding);
-                        int bufferSize = mpg123_outblock(mh);
-                        Log.d("buffer size=", bufferSize);
-                        ubyte[] buffer = new ubyte[bufferSize];
-                        short[] outbuffer;
-                        short * pbuf = cast(short*)buffer.ptr;
-                        outbuffer.assumeSafeAppend;
-                        uint done = 0;
-                        size_t bytesRead = 0;
-                        for (;;) {
-                            res = mpg123_read(mh, buffer.ptr, bufferSize, &done);
-                            if (res != MPG123_OK) {
-                                Log.d("Error while decoding: ", res);
-                                break;
-                            }
-                            bytesRead += bufferSize;
-                            if (!done) {
-                                break;
-                            }
-                            outbuffer ~= pbuf[0 .. done/2];
-                        }
-                        Log.d("Bytes decoded: ", bytesRead, " outBufferLength=", outbuffer.length);
-                    }
-
-                    mpg123_close(mh);
-                }
-
-                mpg123_delete(mh);
-                mpg123_exit();
-            } catch (Exception e) {
-                Log.e("Cannot load libmpg123 shared library", e);
-            }
-        }
     }
 
     void setInstrument(string id) {
         if (_instrument && _instrument.id == id)
             return;
+        if (_instrument) {
+            _mixer.removeSource(_instrument);
+        }
         Instrument[] instr = getInstrumentList();
         Instrument found = instr[0];
         int foundIndex = 0;
@@ -183,7 +141,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         createControllers();
 
-        _playback.setSynth(_instrument);
+        if (_instrument)
+            _mixer.addSource(_instrument);
     }
 
     /// create controllers for current instrument; set current values from settings

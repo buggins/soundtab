@@ -1,5 +1,7 @@
 module soundtab.audio.audiosource;
 
+enum AUDIO_SOURCE_SILENCE_FLAG = 1;
+
 enum SampleFormat {
     signed16,
     float32
@@ -43,6 +45,37 @@ class AudioSource {
         _lock.unlock();
     }
 
+    /// get audio source volume (0 .. 1.0f)
+    @property float volume() {
+        return _volume;
+    }
+
+    /// set audio source volume (0 .. 1.0f)
+    @property AudioSource volume(float v) {
+        lock();
+        scope(exit)unlock();
+        if (v < 0.00001) {
+            // volume = 0
+            _volume = 0;
+            _zeroVolume = true;
+            _unityVolume = false;
+        } else if (v >= 0.999) {
+            // volume = 100%
+            _volume = 1.0f;
+            _zeroVolume = false;
+            _unityVolume = true;
+        } else {
+            // arbitrary volume
+            _zeroVolume = false;
+            _unityVolume = false;
+            _volume = v;
+        }
+        return this;
+    }
+
+    protected float _volume = 1.0f;
+    protected bool _zeroVolume = false;
+    protected bool _unityVolume = true;
     protected SampleFormat sampleFormat = SampleFormat.float32;
     protected int samplesPerSecond = 44100;
     protected int channels = 2;
@@ -152,6 +185,7 @@ class AudioSource {
     }
 }
 
+/// Mixer which can mix several audio sources
 class Mixer : AudioSource {
     private AudioSource[] _sources;
 
@@ -219,6 +253,7 @@ class Mixer : AudioSource {
         // silence
         if (_sources.length == 0) {
             generateSilence(frameCount, buf);
+            flags |= AUDIO_SOURCE_SILENCE_FLAG;
             return true;
         }
         int bufSize = frameCount * channels;
@@ -226,14 +261,27 @@ class Mixer : AudioSource {
             _mixBuffer.length = bufSize;
         if (_sourceBuffer.length < bufSize)
             _sourceBuffer.length = bufSize;
-        uint tmpFlags;
+        bool hasNonSilent = false;
+        uint tmpFlags = 0;
         // load data from first source
         _sources[0].loadData(frameCount, cast(ubyte*)_mixBuffer.ptr, tmpFlags);
+        if (!(tmpFlags & AUDIO_SOURCE_SILENCE_FLAG))
+            hasNonSilent = true;
         // mix data from rest of sources
         for(int i = 1; i < _sources.length; i++) {
+            tmpFlags = 0;
             _sources[i].loadData(frameCount, cast(ubyte*)_sourceBuffer.ptr, tmpFlags);
-            for (int j = 0; j < bufSize; j++)
-                _mixBuffer[j] += _sourceBuffer[j];
+            if (!(tmpFlags & AUDIO_SOURCE_SILENCE_FLAG)) {
+                hasNonSilent = true;
+                for (int j = 0; j < bufSize; j++)
+                    _mixBuffer[j] += _sourceBuffer[j];
+            }
+        }
+        if (!hasNonSilent) {
+            // only silent sources present
+            generateSilence(frameCount, buf);
+            flags |= AUDIO_SOURCE_SILENCE_FLAG;
+            return true;
         }
         // put to output
         if (sampleFormat == SampleFormat.float32) {
