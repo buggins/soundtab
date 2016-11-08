@@ -13,8 +13,9 @@ import soundtab.ui.pressurewidget;
 import soundtab.ui.noterangewidget;
 import soundtab.ui.slidercontroller;
 import soundtab.audio.playback;
-import soundtab.audio.instruments;
 import soundtab.audio.audiosource;
+import soundtab.audio.instruments;
+import soundtab.audio.mp3player;
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     import soundtab.ui.frame;
@@ -27,6 +28,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     NoteRangeWidget _noteRangeWidget;
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
+    Mp3Player _player;
     Mixer _mixer;
     Instrument _instrument;
     HorizontalLayout _controllers;
@@ -45,7 +47,10 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _frame = frame;
         _playback = playback;
         _mixer = new Mixer();
+        _player = new Mp3Player();
         _playback.setSynth(_mixer);
+        _mixer.addSource(_player);
+        _player.loadFromFile("jmj-chronologie3.mp3");
         _tablet = tablet;
         _tablet.onProximity = this;
         _tablet.onPosition = this;
