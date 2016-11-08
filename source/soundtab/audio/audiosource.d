@@ -151,3 +151,108 @@ class AudioSource {
         return true;
     }
 }
+
+class Mixer : AudioSource {
+    private AudioSource[] _sources;
+
+    this() {
+        _sources.assumeSafeAppend;
+        _mixBuffer = new float[4096];
+        _mixBuffer.assumeSafeAppend;
+        _sourceBuffer = new float[4096];
+        _sourceBuffer.assumeSafeAppend;
+    }
+
+    private AudioSource[] getSourcesSnapshot() {
+        lock();
+        scope(exit)unlock();
+        AudioSource[] res = _sources.dup();
+        return res;
+    }
+
+    /// add source to mixer
+    void addSource(AudioSource source) {
+        lock();
+        scope(exit)unlock();
+        foreach(s; _sources)
+            if (s is source)
+                return;
+        _sources ~= source;
+        setSourceFormat(source);
+    }
+
+    /// remove source from mixer
+    void removeSource(AudioSource source) {
+        lock();
+        scope(exit)unlock();
+        for (int i = 0; i < _sources.length; i++) {
+            if (_sources[i] is source) {
+                for (int j = i; j + 1 < _sources.length; j++)
+                    _sources[j] = _sources[j + 1];
+                _sources[$ - 1] = null;
+                _sources.length = _sources.length - 1;
+                return;
+            }
+        }
+    }
+
+    /// pass current format to source
+    protected void setSourceFormat(AudioSource source) {
+        source.setFormat(SampleFormat.float32, channels, samplesPerSecond, 32, 4*channels);
+    }
+
+    /// handle format change: pass same format to sources
+    override protected void onFormatChanged() {
+        // already called from lock
+        foreach(source; _sources) {
+            setSourceFormat(source);
+        }
+    }
+
+    private float[] _mixBuffer;
+    private float[] _sourceBuffer;
+    /// load data into buffer
+    override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
+        lock();
+        scope(exit)unlock();
+        flags = 0;
+        // silence
+        if (_sources.length == 0) {
+            generateSilence(frameCount, buf);
+            return true;
+        }
+        int bufSize = frameCount * channels;
+        if (_mixBuffer.length < bufSize)
+            _mixBuffer.length = bufSize;
+        if (_sourceBuffer.length < bufSize)
+            _sourceBuffer.length = bufSize;
+        uint tmpFlags;
+        // load data from first source
+        _sources[0].loadData(frameCount, cast(ubyte*)_mixBuffer.ptr, tmpFlags);
+        // mix data from rest of sources
+        for(int i = 1; i < _sources.length; i++) {
+            _sources[i].loadData(frameCount, cast(ubyte*)_sourceBuffer.ptr, tmpFlags);
+            for (int j = 0; j < bufSize; j++)
+                _mixBuffer[j] += _sourceBuffer[j];
+        }
+        // put to output
+        if (sampleFormat == SampleFormat.float32) {
+            // copy as is
+            float * ptr = cast(float*)buf;
+            ptr[0 .. bufSize] = _mixBuffer[0 .. bufSize];
+        } else if (sampleFormat == SampleFormat.signed16) {
+            // convert to short
+            short * ptr = cast(short*)buf;
+            for (int i = 0; i < bufSize; i++) {
+                float v = _mixBuffer.ptr[i];
+                int sample = cast(int)(v * 32767.0f);
+                limitShortRange(sample);
+                ptr[i] = cast(short)sample;
+            }
+        } else {
+            // unsupported output format
+            generateSilence(frameCount, buf);
+        }
+        return true;
+    }
+}
