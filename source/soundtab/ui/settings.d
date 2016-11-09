@@ -23,6 +23,17 @@ class AudioSettings : SettingsFile {
         audio.setIntegerDef("minFrameMillis", 3);
     }
 
+    @property int accompanimentVolume() {
+        Setting accomp = accompSettings();
+        return cast(int)accomp.getInteger("volume", 1000);
+    }
+
+    @property AudioSettings accompanimentVolume(int v) {
+        Setting accomp = accompSettings();
+        accomp.setInteger("volume", v);
+        return this;
+    }
+
     @property string accompanimentFile() {
         Setting accomp = accompSettings();
         return accomp.getString("file", null);

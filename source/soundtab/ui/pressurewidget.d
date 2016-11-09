@@ -10,7 +10,7 @@ class PressureWidget : Widget {
 
     this() {
         super("pressure");
-        margins = Rect(3,3,3,3);
+        margins = Rect(5,5,5,5).pointsToPixels;
         //styleId = "EDIT_LINE";
     }
 
@@ -18,7 +18,7 @@ class PressureWidget : Widget {
     Measure widget according to desired width and height constraints. (Step 1 of two phase layout). 
     */
     override void measure(int parentWidth, int parentHeight) {
-        int h = font.height * 2;
+        int h = font.height * 150 / 100;
         dstring label = "Pressure";
         FontRef fnt = font;
         Point sz = fnt.textSize(label);

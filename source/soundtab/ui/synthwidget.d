@@ -20,18 +20,21 @@ import soundtab.audio.instruments;
 import soundtab.audio.mp3player;
 
 class PlayerPanel : GroupBox {
+    import soundtab.ui.frame;
+    private SoundFrame _frame;
     private Mp3Player _player;
     private TextWidget _playFileName;
     private TextWidget _playPositionText;
     private SliderWidget _playSlider;
     private SliderController _volumeControl;
-    this() {
+    this(SoundFrame frame) {
         super("playerControls", "Accompaniment"d, Orientation.Horizontal);
+        _frame = frame;
         layoutWidth = FILL_PARENT;
         Widget openButton = new Button(ACTION_FILE_OPEN_ACCOMPANIMENT);
         Widget playButton = new Button(ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT);
 
-        _volumeControl = new SliderController(ControllerId.AccompanimentVolume, "Volume"d, 0, 1000, 1000);
+        _volumeControl = new SliderController(ControllerId.AccompanimentVolume, "Volume"d, 0, 1000, _frame.settings.accompanimentVolume);
 
         VerticalLayout sliderLayout = new VerticalLayout();
         HorizontalLayout textLayout = new HorizontalLayout();
@@ -64,6 +67,7 @@ class PlayerPanel : GroupBox {
     }
 
     protected void onVolume(SliderController source, int value) {
+        _frame.settings.accompanimentVolume = value;
         _player.volume = value / 1000.0f;
     }
 
@@ -170,15 +174,21 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsLayout.layoutHeight = WRAP_CONTENT;
         addChild(_controlsLayout);
 
-        _playerPanel = new PlayerPanel();
+        _playerPanel = new PlayerPanel(_frame);
         _mixer.addSource(_playerPanel._player);
         _controlsLayout.addChild(_playerPanel);
 
-        GroupBox _controlsh = new GroupBox(null, "Instrument"d, Orientation.Horizontal);
+        GroupBox _controlsh = new GroupBox(null, "Instrument"d, Orientation.Vertical);
         _controlsh.layoutWidth = FILL_PARENT;
         _controlsh.layoutHeight = WRAP_CONTENT;
         //_controlsh.margins = Rect(3,3,3,3);
         _controlsLayout.addChild(_controlsh);
+        HorizontalLayout instrLine1 = new HorizontalLayout();
+        HorizontalLayout instrLine2 = new HorizontalLayout();
+        instrLine1.layoutWidth = FILL_PARENT;
+        instrLine2.layoutWidth = FILL_PARENT;
+        _controlsh.addChild(instrLine1);
+        _controlsh.addChild(instrLine2);
 
         int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
         _pitchCorrection = new SliderController(ControllerId.PitchCorrection, "Pitch correction", 0, 1000, corrValue);
@@ -217,21 +227,21 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             return true;
         };
         gb.addChild(_instrSelection);
-        _controlsh.addChild(_volumeControl);
-        _controlsh.addChild(gb);
-        _controlsh.addChild(_controllers);
+        instrLine1.addChild(_volumeControl);
+        instrLine1.addChild(gb);
+        instrLine1.addChild(new HSpacer());
+        instrLine1.addChild(_controllers);
 
 
 
-        _controlsh.addChild(new HSpacer());
-
-        _controlsh.addChild(_pitchCorrection);
+        instrLine2.addChild(_pitchCorrection);
 
         _pitchWidget = new PitchWidget();
-        _controlsh.addChild(_pitchWidget);
+        instrLine2.addChild(_pitchWidget);
     
         _pressureWidget = new PressureWidget();
-        _controlsh.addChild(_pressureWidget);
+        instrLine2.addChild(_pressureWidget);
+        instrLine2.addChild(new HSpacer());
 
         _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
