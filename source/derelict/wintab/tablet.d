@@ -212,7 +212,7 @@ class Tablet {
                     {
                         //MessageBeep(0);
                     }
-                    Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", "%08x".format(pkt.pkButtons));
+                    //Log.d("WT_PACKET x=", pkt.pkX, " y=", pkt.pkY, " z=", pkt.pkZ, " np=", pkt.pkNormalPressure, " tp=", pkt.pkTangentPressure, " buttons=", "%08x".format(pkt.pkButtons));
                     onPacket(pkt.pkX, pkt.pkY, pkt.pkNormalPressure, pkt.pkButtons);
                     //ptOld = ptNew;
                     //prsOld = prsNew;
