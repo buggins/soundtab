@@ -145,6 +145,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     PlayerPanel _playerPanel;
 
     ComboBox _instrSelection;
+    ComboBox _yControllerSelection;
     SliderController _chorus;
     SliderController _reverb;
     SliderController _vibrato;
@@ -204,7 +205,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             instrList ~= StringListValue(i.id, i.name);
         }
         VerticalLayout gb = new VerticalLayout("instrgb");
-        gb.addChild(new TextWidget(null, "Selected instrument:"d));
+        gb.addChild(new TextWidget(null, "Instrument:"d));
         gb.margins = Rect(5, 0, 5, 0).pointsToPixels;
         gb.padding = Rect(5, 0, 5, 0).pointsToPixels;
         string instrId = _frame.settings.instrumentId;
@@ -215,7 +216,6 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
                 instrIndex = i;
         }
         _controllers = new HorizontalLayout();
-        setInstrument(instrId);
         _instrSelection.itemClick = delegate(Widget source, int itemIndex) {
             Instrument ins = instr[itemIndex];
             setInstrument(ins.id);
@@ -227,12 +227,32 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             return true;
         };
         gb.addChild(_instrSelection);
+
+        VerticalLayout gb2 = new VerticalLayout("instrgb");
+        gb2.addChild(new TextWidget(null, "Y axis controller:"d));
+        _yControllerSelection = new ComboBox("instrument");
+        _yControllerSelection.itemClick = delegate(Widget source, int itemIndex) {
+            _frame.settings.setControllerValue(ControllerId.YAxisController, itemIndex);
+            _yAxisControllerWidget = itemIndex > 0 ? cast(SliderController)_controllers.child(itemIndex - 1) : null;
+            _yAxisController = ControllerId.None;
+            if (_yAxisControllerWidget) {
+                import std.conv : to;
+                string strId = _yAxisControllerWidget.id;
+                if (strId.length) {
+                    _yAxisController = strId.to!ControllerId;
+                    _instrument.setYAxisController(_yAxisController);
+                }
+            }
+            return true;
+        };
+        gb2.addChild(_yControllerSelection);
+
+        setInstrument(instrId);
+
         instrLine1.addChild(_volumeControl);
         instrLine1.addChild(gb);
         instrLine1.addChild(new HSpacer());
         instrLine1.addChild(_controllers);
-
-
 
         instrLine2.addChild(_pitchCorrection);
 
@@ -242,6 +262,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _pressureWidget = new PressureWidget();
         instrLine2.addChild(_pressureWidget);
         instrLine2.addChild(new HSpacer());
+        instrLine2.addChild(gb2);
 
         _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
@@ -281,11 +302,21 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             _mixer.addSource(_instrument);
     }
 
+    ControllerId _yAxisController = ControllerId.None;
+    SliderController _yAxisControllerWidget;
+
     /// create controllers for current instrument; set current values from settings
     void createControllers() {
         _controllers.removeAllChildren();
         immutable(Controller[]) controllers = _instrument.getControllers();
+        StringListValue[] controllerList;
+        controllerList ~= StringListValue(0, "No Y axis mapping"d);
+        int yControllerIndex = _frame.settings.getControllerValue(ControllerId.YAxisController, 0);
+        int index = 0;
+        _yAxisController = ControllerId.None;
+        _yAxisControllerWidget = null;
         foreach(controller; controllers) {
+            index++;
             int value = controller.value;
             value = _frame.settings.getControllerValue(controller.id, value);
             if (value < controller.minValue)
@@ -296,13 +327,21 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             w.onChange = &onController;
             _controllers.addChild(w);
             _instrument.updateController(controller.id, value);
+            controllerList ~= StringListValue(controller.id, controller.name);
+            if (index == yControllerIndex) {
+                _yAxisController = controller.id;
+                _yAxisControllerWidget = w;
+            }
         }
+        _yControllerSelection.items = controllerList;
+        _yControllerSelection.selectedItemIndex = yControllerIndex;
         int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
         _corrector.amount = corrValue;
         _pitchCorrection.value = corrValue;
         int volume = _frame.settings.getControllerValue(ControllerId.InstrumentVolume, 1000);
         _instrument.volume = volume / 1000.0f;
         _volumeControl.value = volume;
+        _instrument.setYAxisController(_yAxisController);
     }
 
     protected void onVolume(SliderController source, int value) {
@@ -335,6 +374,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _soundCanvas.setPosition(x, y, pressure);
         double pitch = _corrector.correctPitch(_soundCanvas.pitch);
         _instrument.setSynthParams(pitch, pressure, y);
+        if (_yAxisControllerWidget)
+            _yAxisControllerWidget.value = cast(int)((1 - y) * 1000);
         _pitchWidget.setPitch(pitch);
         _noteRangeWidget.setPitch(pitch);
         _pressureWidget.setPressure(pressure, _proximity);

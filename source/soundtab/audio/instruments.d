@@ -251,6 +251,8 @@ enum ControllerId {
     Distortion,
     InstrumentVolume,
     AccompanimentVolume,
+    None,
+    YAxisController
 }
 
 struct Controller {
@@ -394,13 +396,14 @@ class Instrument : AudioSource {
 
     protected string _id;
     protected dstring _name;
+    protected ControllerId _yAxisControllerId = ControllerId.None;
 
     @property dstring name() { return _name; }
     @property string id() { return _id; }
 
     protected float _targetPitch = 1000; // Hz
     protected float _targetGain = 0; // 0..1
-    protected float _targetController1 = 0;
+    //protected float _targetController1 = 0;
 
     protected int _attack = 20;
     protected int _release = 40;
@@ -415,9 +418,11 @@ class Instrument : AudioSource {
         return false;
     }
 
+    void setYAxisController(ControllerId controllerId) {
+        _yAxisControllerId = controllerId;
+    }
+
     void setSynthParams(float pitch, float gain, float controller1) {
-        lock();
-        scope(exit)unlock();
 
         if (pitch < 16)
             pitch = 16;
@@ -432,14 +437,20 @@ class Instrument : AudioSource {
         if (controller1 > 1)
             controller1 = 1;
         // lower part of tablet should be sine
-        if (controller1 < 0.9)
-            controller1 /= 0.9;
-        else
-            controller1 = 1;
-        if (gain > 0.001) {
-            _targetPitch = pitch;
-            _targetController1 = controller1;
+        //if (controller1 < 0.9)
+        //    controller1 /= 0.9;
+        //else
+        //    controller1 = 1;
+        if (_yAxisControllerId != ControllerId.None) {
+            updateController(_yAxisControllerId, cast(int)((1 - controller1) * 1000));
         }
+        //===========================================
+        lock();
+        scope(exit)unlock();
+        //if (gain > 0.001) {
+            _targetPitch = pitch;
+            //_targetController1 = controller1;
+        //}
         _targetGain = gain;
     }
 
@@ -509,7 +520,7 @@ class InstrumentBaseF : Instrument {
         _pitch.target = freqToStepMul256(_targetPitch);
         _gain.target = _targetGain;
         _chorus.target = _targetChorus;
-        _controller1.target = _targetController1;
+        //_controller1.target = _targetController1;
         _vibratoAmount.target = _targetVibratoAmount;
         _vibratoFreq.target = freqToStepMul256(_targetVibratoFreq);
         _distortion.target = _targetDistortion;
@@ -586,7 +597,7 @@ class InstrumentBase : Instrument {
         // copy dynamic values
         _currentPitch = _targetPitch;
         _currentGain = _targetGain;
-        _currentController1 = _targetController1;
+        //_currentController1 = _targetController1;
         double onePeriodSamples = samplesPerSecond / _currentPitch;
         double step = WAVETABLE_SIZE / onePeriodSamples;
         _target_step_mul_256 = cast(int)(step * 256);
