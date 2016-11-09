@@ -150,14 +150,14 @@ class Mp3Player : AudioSource {
             res =  mpg123_getformat(mh, &_sourceRate, &_sourceChannels, &_sourceEncoding);
             if (res == MPG123_OK) {
                 Log.d("mp3 file rate=", _sourceRate, " channels=", _sourceChannels, " enc=", _sourceEncoding);
-                int bufferSize = mpg123_outblock(mh);
+                int bufferSize = cast(int)mpg123_outblock(mh);
                 Log.d("buffer size=", bufferSize);
                 bufferSize *= 4;
                 ubyte[] buffer = new ubyte[bufferSize];
                 short[] outbuffer;
                 short * pbuf = cast(short*)buffer.ptr;
                 outbuffer.assumeSafeAppend;
-                uint done = 0;
+                size_t done = 0;
                 size_t bytesRead = 0;
                 for (;;) {
                     res = mpg123_read(mh, buffer.ptr, bufferSize, &done);
