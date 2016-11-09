@@ -12,6 +12,8 @@ For better experience, use Wacom digitizer with pressure detection.
 
 You can play with mouse as well, but w/o volume modulation (no pressure information), and less precise positioning.
 
+It's possible to play accompaniment MP3 track inside SoundTab (useful since in exclusive mode you cannot playback from other apps to the same device).
+
 Written using DlangUI GUI library: [https://github.com/buggins/dlangui](https://github.com/buggins/dlangui)
 
 
