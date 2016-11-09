@@ -5,7 +5,9 @@ import dlangui.widgets.layouts;
 import dlangui.widgets.controls;
 import dlangui.widgets.combobox;
 import dlangui.widgets.groupbox;
+import dlangui.widgets.scrollbar;
 import soundtab.ui.sndcanvas;
+import soundtab.ui.actions;
 import derelict.wintab.tablet;
 import soundtab.ui.noteutil;
 import soundtab.ui.pitchwidget;
@@ -16,6 +18,83 @@ import soundtab.audio.playback;
 import soundtab.audio.audiosource;
 import soundtab.audio.instruments;
 import soundtab.audio.mp3player;
+
+class PlayerPanel : GroupBox {
+    private Mp3Player _player;
+    private TextWidget _playPositionText;
+    private SliderWidget _playSlider;
+    this() {
+        super("playerControls", "Accompaniment"d, Orientation.Horizontal);
+        layoutWidth = FILL_PARENT;
+        Widget openButton = new Button(ACTION_FILE_OPEN_ACCOMPANIMENT);
+        Widget playButton = new Button(ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT);
+        TextWidget playFilename = new TextWidget("playFilename", "..."d);
+        playFilename.minWidth = 100.pointsToPixels;
+        playFilename.maxWidth = 200.pointsToPixels;
+        VerticalLayout sliderLayout = new VerticalLayout();
+        sliderLayout.layoutWidth = FILL_PARENT;
+        _playSlider = new SliderWidget("playPosition");
+        _playSlider.layoutWidth = FILL_PARENT;
+        _playSlider.setRange(0, 10000);
+        _playSlider.position = 0;
+        _playSlider.scrollEvent = &onScrollEvent;
+        _playPositionText = new TextWidget("playPositionText", ""d);
+        _playPositionText.layoutWidth = FILL_PARENT;
+        _playPositionText.alignment = Align.Center;
+        sliderLayout.addChild(_playPositionText);
+        sliderLayout.addChild(_playSlider);
+
+        addChild(openButton);
+        addChild(playFilename);
+        addChild(playButton);
+        addChild(sliderLayout);
+        _player = new Mp3Player();
+        _player.loadFromFile("jmj-chronologie3.mp3");
+        updatePlayPosition();
+    }
+
+    PlayPosition _position;
+    string _filename;
+
+    static dstring secondsToString(float v) {
+        import std.math : round;
+        import std.format;
+        import std.utf : toUTF32;
+        int seconds = cast(int)round(v);
+
+        // utf conversion is to bypass dmd 2.072.0 bug
+        return ("%d:%02d".format(seconds / 60, (seconds % 60))).toUTF32;
+    }
+
+    void updatePlayPosition() {
+        import std.path : baseName;
+        import std.utf : toUTF32;
+        _filename = _player.filename;
+        _position = _player.position;
+        dchar[] positionText;
+        positionText ~= _filename ? _filename.baseName.toUTF32 : "[no MP3 file opened]"d;
+        positionText ~= "   "d;
+        positionText ~= secondsToString(_position.currentPosition);
+        positionText ~= " / "d;
+        positionText ~= secondsToString(_position.length);
+        if (_playPositionText.text != positionText)
+            _playPositionText.text = cast(dstring)positionText;
+        int percent = _position.positionPercent;
+        if (_playSlider.position != percent)
+            _playSlider.position = percent;
+    }
+
+    protected bool onScrollEvent(AbstractSlider source, ScrollEvent event) {
+        if (event.action == ScrollAction.SliderMoved) {
+            //int percent = _position.positionPercent;
+            _player.position = _position.percentToSeconds(event.position);
+            //if (event.position != percent)
+            //    updatePlayPosition();
+
+        }
+        return true;
+    }
+}
 
 class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandler {
     import soundtab.ui.frame;
@@ -28,10 +107,10 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     NoteRangeWidget _noteRangeWidget;
     PressureWidget _pressureWidget;
     AudioPlayback _playback;
-    Mp3Player _player;
     Mixer _mixer;
     Instrument _instrument;
     HorizontalLayout _controllers;
+    PlayerPanel _playerPanel;
 
     ComboBox _instrSelection;
     SliderController _chorus;
@@ -47,10 +126,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _frame = frame;
         _playback = playback;
         _mixer = new Mixer();
-        _player = new Mp3Player();
         _playback.setSynth(_mixer);
-        _mixer.addSource(_player);
-        _player.loadFromFile("jmj-chronologie3.mp3");
         _tablet = tablet;
         _tablet.onProximity = this;
         _tablet.onPosition = this;
@@ -64,6 +140,11 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsLayout.layoutWidth = FILL_PARENT;
         _controlsLayout.layoutHeight = WRAP_CONTENT;
         addChild(_controlsLayout);
+
+        _playerPanel = new PlayerPanel();
+        _mixer.addSource(_playerPanel._player);
+        _controlsLayout.addChild(_playerPanel);
+
         HorizontalLayout _controlsh = new HorizontalLayout();
         _controlsh.layoutWidth = FILL_PARENT;
         _controlsh.layoutHeight = WRAP_CONTENT;
@@ -211,4 +292,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         }
     }
 
+    void updatePlayPosition() {
+        _playerPanel.updatePlayPosition();
+    }
 }

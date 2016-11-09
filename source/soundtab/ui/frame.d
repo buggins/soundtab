@@ -46,6 +46,7 @@ class SoundFrame : AppFrame {
                 statusLine.setStatusText(status.toUTF32);
                 _lastStatusText = status;
             }
+            _synth.updatePlayPosition();
             return true;
         } else {
             return super.onTimer(id);

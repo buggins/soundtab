@@ -29,6 +29,29 @@ void uninitMP3Decoder() {
         mpg123_exit();
 }
 
+struct PlayPosition {
+    /// current playback position, seconds
+    float currentPosition;
+    /// total length, seconds
+    float length;
+
+    /// returns current position as percent*100 : 0..10000
+    @property int positionPercent() {
+        if (length < 0.1)
+            return 0;
+        int res = cast(int)(10000 * currentPosition / length);
+        if (res < 0)
+            res = 0;
+        if (res > 10000)
+            res = 10000;
+        return res;
+    }
+
+    float percentToSeconds(int percent) {
+        return percent * length / 10000;
+    }
+}
+
 class Mp3Player : AudioSource {
     private string _filename;
     private bool _loaded;
@@ -38,13 +61,65 @@ class Mp3Player : AudioSource {
     private short[] _sourceData;
     private int _sourcePosition;
     private int _sourceFrames;
+    private bool _paused;
+
+    @property bool paused() { return _paused; }
+    @property Mp3Player paused(bool pauseFlag) {
+        _paused = pauseFlag;
+        return this;
+    }
+
+    /// returns current filename
+    @property string filename() {
+        lock();
+        scope(exit)unlock();
+        return _filename;
+    }
+
+    /// set current filename and load MP3 file; returns true if successful
+    @property bool filename(string filename) {
+        return loadFromFile(filename);
+    }
+
+    /// get current play position and total track length (seconds)
+    @property PlayPosition position() {
+        lock();
+        scope(exit)unlock();
+        if (!_loaded)
+            return PlayPosition(0, 0);
+        return PlayPosition(_sourcePosition / cast(float)_sourceRate, _sourceFrames / cast(float)_sourceRate);
+    }
+
+    /// set current play position (seconds)
+    @property void position(float positionSeconds) {
+        lock();
+        scope(exit)unlock();
+        if (!_loaded)
+            return;
+        int newPosition = cast(int)(positionSeconds * _sourceRate);
+        if (newPosition < 0)
+            newPosition = 0;
+        if (newPosition > _sourceFrames)
+            newPosition = _sourceFrames;
+        _sourcePosition = newPosition;
+    }
 
     @property bool loaded() { return _loaded; }
     /// returns playback position frame number
     @property int sourcePosition() { 
         lock();
         scope(exit)unlock();
-        return _loaded ? _sourcePosition / _sourceChannels : 0; 
+        return _loaded ? _sourcePosition : 0; 
+    }
+    /// sets playback position frame number
+    @property void sourcePosition(int newPosition) { 
+        lock();
+        scope(exit)unlock();
+        if (newPosition < 0)
+            newPosition = 0;
+        if (newPosition > _sourceFrames)
+            newPosition = _sourceFrames;
+        _sourcePosition = newPosition;
     }
 
     /// load MP3 file
@@ -54,9 +129,13 @@ class Mp3Player : AudioSource {
             lock();
             scope(exit)unlock();
             _loaded = false;
+            _sourcePosition = 0;
+            if (_filename == filename) {
+                // opening the same file as already opened - just move to start
+                return true;
+            }
             _filename = null;
             _sourceData = null;
-            _sourcePosition = 0;
             _sourceFrames = 0;
         }
         if (!loadMPG123()) {
@@ -117,7 +196,7 @@ class Mp3Player : AudioSource {
         scope(exit)unlock();
         flags = 0;
         // silence
-        if (!_loaded || !_sourceFrames || _zeroVolume || _sourcePosition >= _sourceFrames) {
+        if (!_loaded || _paused || !_sourceFrames || _zeroVolume || _sourcePosition >= _sourceFrames) {
             generateSilence(frameCount, buf);
             flags |= AUDIO_SOURCE_SILENCE_FLAG;
             return true;

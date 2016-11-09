@@ -107,20 +107,22 @@ class AudioSource {
         if (sampleFormat == SampleFormat.float32) {
             float * floatBuf = cast(float*)buf;
             float sample1f = cast(float)(sample1 / 32768.0f);
-            float sample2f = sample1f;
             *(floatBuf++) = sample1f;
             if (channels > 1) {
-                sample2f = cast(float)(sample2 / 32768.0f);
+                float sample2f = cast(float)(sample2 / 32768.0f);
                 *(floatBuf++) = sample2f;
+                if (channels > 2) {
+                    *(floatBuf++) = sample1f;
+                    if (channels > 3) {
+                        *(floatBuf++) = sample2f;
+                        if (channels > 4) {
+                            *(floatBuf++) = sample1f;
+                            if (channels > 5)
+                                *(floatBuf++) = sample2f;
+                        }
+                    }
+                }
             }
-            if (channels > 2)
-                *(floatBuf++) = sample1f;
-            if (channels > 3)
-                *(floatBuf++) = sample2f;
-            if (channels > 4)
-                *(floatBuf++) = sample1f;
-            if (channels > 5)
-                *(floatBuf++) = sample2f;
         } else {
             limitShortRange(sample1);
             limitShortRange(sample2);
@@ -144,16 +146,20 @@ class AudioSource {
         if (sampleFormat == SampleFormat.float32) {
             float * floatBuf = cast(float*)buf;
             *(floatBuf++) = sample1;
-            if (channels > 1)
+            if (channels > 1) {
                 *(floatBuf++) = sample2;
-            if (channels > 2)
-                *(floatBuf++) = sample1;
-            if (channels > 3)
-                *(floatBuf++) = sample2;
-            if (channels > 4)
-                *(floatBuf++) = sample1;
-            if (channels > 5)
-                *(floatBuf++) = sample2;
+                if (channels > 2) {
+                    *(floatBuf++) = sample1;
+                    if (channels > 3) {
+                        *(floatBuf++) = sample2;
+                        if (channels > 4) {
+                            *(floatBuf++) = sample1;
+                            if (channels > 5)
+                                *(floatBuf++) = sample2;
+                        }
+                    }
+                }
+            }
         } else if (sampleFormat == SampleFormat.signed16) {
             short * shortBuf = cast(short*)buf;
             int sample1i = cast(int)(sample1 * 32767.0f);
