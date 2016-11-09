@@ -106,6 +106,19 @@ class AudioSettings : SettingsFile {
         int res = cast(int)s.getInteger(to!string(controllerId), defValue);
         return res;
     }
+
+    @property int[2] noteRange() {
+        int start = cast(int)controllerSettings.getInteger("noteRangeStart", -25);
+        int end = cast(int)controllerSettings.getInteger("noteRangeEnd", 28);
+        return [start, end];
+    }
+
+    @property AudioSettings noteRange(int[2] range) {
+        controllerSettings.setInteger("noteRangeStart", range[0]);
+        controllerSettings.setInteger("noteRangeEnd", range[1]);
+        return this;
+    }
+
 }
 
 SettingsPage createSettingsPages(StringListValue[] deviceList) {

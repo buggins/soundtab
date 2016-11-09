@@ -175,6 +175,9 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _controlsLayout.layoutHeight = WRAP_CONTENT;
         addChild(_controlsLayout);
 
+        _noteRangeWidget = new NoteRangeWidget();
+        _soundCanvas = new SoundCanvas(this);
+
         _playerPanel = new PlayerPanel(_frame);
         _mixer.addSource(_playerPanel._player);
         _controlsLayout.addChild(_playerPanel);
@@ -205,11 +208,12 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             instrList ~= StringListValue(i.id, i.name);
         }
         VerticalLayout gb = new VerticalLayout("instrgb");
-        gb.addChild(new TextWidget(null, "Instrument:"d));
-        gb.margins = Rect(5, 0, 5, 0).pointsToPixels;
-        gb.padding = Rect(5, 0, 5, 0).pointsToPixels;
+        //gb.addChild(new TextWidget(null, "Instrument:"d));
+        gb.margins = Rect(3, 0, 3, 0).pointsToPixels;
+        gb.padding = Rect(3, 0, 3, 0).pointsToPixels;
         string instrId = _frame.settings.instrumentId;
         _instrSelection = new ComboBox("instrument", instrList);
+        _instrSelection.minWidth = pointsToPixels(100);
         int instrIndex = 0;
         for (int i = 0; i < instr.length; i++) {
             if (instr[i].id == instrId)
@@ -247,31 +251,30 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         };
         gb2.addChild(_yControllerSelection);
 
-        setInstrument(instrId);
-
-        instrLine1.addChild(_volumeControl);
         instrLine1.addChild(gb);
         instrLine1.addChild(new HSpacer());
         instrLine1.addChild(_controllers);
 
+        _pitchWidget = new PitchWidget();
+        _pressureWidget = new PressureWidget();
+
+        instrLine2.addChild(_volumeControl);
+        instrLine2.addChild(_pitchWidget);
         instrLine2.addChild(_pitchCorrection);
 
-        _pitchWidget = new PitchWidget();
-        instrLine2.addChild(_pitchWidget);
-    
-        _pressureWidget = new PressureWidget();
-        instrLine2.addChild(_pressureWidget);
         instrLine2.addChild(new HSpacer());
+
+        instrLine2.addChild(_pressureWidget);
         instrLine2.addChild(gb2);
 
-        _soundCanvas = new SoundCanvas(this);
         addChild(_soundCanvas);
 
-        _noteRangeWidget = new NoteRangeWidget();
         addChild(_noteRangeWidget);
 
         _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
+
+        setInstrument(instrId);
 
         string accompFile = _frame.settings.accompanimentFile;
         if (accompFile)
@@ -342,6 +345,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _instrument.volume = volume / 1000.0f;
         _volumeControl.value = volume;
         _instrument.setYAxisController(_yAxisController);
+        int[2] range = _frame.settings.noteRange;
+        _noteRangeWidget.handleRangeChange(range[0], range[1]);
     }
 
     protected void onVolume(SliderController source, int value) {
@@ -365,6 +370,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
     void onNoteRangeChange(int minNote, int maxNote) {
         _soundCanvas.setNoteRange(minNote, maxNote);
+        _frame.settings.noteRange = [minNote, maxNote];
     }
 
     @property bool tabletInitialized() { return _tablet.isInitialized; }

@@ -699,9 +699,9 @@ class SineHarmonicWaveTable : InstrumentBaseF {
 
 
 
-        if (_gain.isZero || _zeroVolume) {
+        if (_gain.isZero /* || _zeroVolume */) {
             // silent
-            flags = AUDIO_SOURCE_SILENCE_FLAG;
+            //flags = AUDIO_SOURCE_SILENCE_FLAG;
             generateSilence(frameCount, buf);
             resetPhase();
             return true;
