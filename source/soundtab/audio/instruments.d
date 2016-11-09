@@ -684,9 +684,11 @@ class SineHarmonicWaveTable : InstrumentBaseF {
 
         interpolateParams(frameCount);
 
-        if (_gain.isZero) {
+
+
+        if (_gain.isZero || _zeroVolume) {
             // silent
-            flags = 0;
+            flags = AUDIO_SOURCE_SILENCE_FLAG;
             generateSilence(frameCount, buf);
             resetPhase();
             return true;
@@ -707,6 +709,8 @@ class SineHarmonicWaveTable : InstrumentBaseF {
         for (int i = 0; i < frameCount; i++) {
             /// one step
             float gain = _gain.next;
+            if (!_unityVolume)
+                gain *= _volume;
             float controller1 = _controller1.next;
 
             int step = _pitch.next; //_vibrato0.stepMultiply(_step_mul_256, vibratoAmount1);

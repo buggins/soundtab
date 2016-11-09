@@ -128,15 +128,21 @@ class Mp3Player : AudioSource {
             // need resampling
             // simple get-nearest-frame resampler
             int srcFrames = cast(int)(cast(long)frameCount * _sourceRate / samplesPerSecond);
+            //Log.d("Resampling ", srcFrames, " -> ", frameCount, " (", _sourceRate, "->", samplesPerSecond, ")");
             for (; i < frameCount; i++) {
                 int index = (i * srcFrames / frameCount + _sourcePosition) * _sourceChannels;
                 if (index + _sourceChannels - 1 < _sourceData.length) {
                     float sample1 = _sourceData.ptr[index] / 32768.0f;
                     float sample2 = _sourceChannels > 1 ? _sourceData.ptr[index + 1] / 32768.0f : sample1;
+                    if (!_unityVolume) {
+                        sample1 *= _volume;
+                        sample2 *= _volume;
+                    }
                     putSamples(buf, sample1, sample2);
                 } else {
                     putSamples(buf, 0.0f, 0.0f);
                 }
+                buf += blockAlign;
             }
             _sourcePosition += srcFrames;
             if (_sourcePosition > _sourceFrames)

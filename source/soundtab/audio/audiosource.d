@@ -105,66 +105,74 @@ class AudioSource {
     /// put samples in int format
     protected void putSamples(ubyte * buf, int sample1, int sample2) {
         if (sampleFormat == SampleFormat.float32) {
-            FloatConv floatConv;
-            floatConv.value = cast(float)(sample1 / 65536.0);
-            buf[0] = floatConv.bytes.ptr[0];
-            buf[1] = floatConv.bytes.ptr[1];
-            buf[2] = floatConv.bytes.ptr[2];
-            buf[3] = floatConv.bytes.ptr[3];
+            float * floatBuf = cast(float*)buf;
+            float sample1f = cast(float)(sample1 / 32768.0f);
+            float sample2f = sample1f;
+            *(floatBuf++) = sample1f;
             if (channels > 1) {
-                floatConv.value = cast(float)(sample2 / 65536.0);
-                buf[4] = floatConv.bytes.ptr[0];
-                buf[5] = floatConv.bytes.ptr[1];
-                buf[6] = floatConv.bytes.ptr[2];
-                buf[7] = floatConv.bytes.ptr[3];
+                sample2f = cast(float)(sample2 / 32768.0f);
+                *(floatBuf++) = sample2f;
             }
-            // TODO: more channels
+            if (channels > 2)
+                *(floatBuf++) = sample1f;
+            if (channels > 3)
+                *(floatBuf++) = sample2f;
+            if (channels > 4)
+                *(floatBuf++) = sample1f;
+            if (channels > 5)
+                *(floatBuf++) = sample2f;
         } else {
-            ShortConv shortConv;
-            shortConv.value = cast(short)(sample1);
-            buf[0] = shortConv.bytes.ptr[0];
-            buf[1] = shortConv.bytes.ptr[1];
-            if (channels > 1) {
-                shortConv.value = cast(short)(sample2);
-                buf[2] = shortConv.bytes.ptr[0];
-                buf[3] = shortConv.bytes.ptr[1];
-            }
-            // TODO: more channels
+            limitShortRange(sample1);
+            limitShortRange(sample2);
+            short * shortBuf = cast(short*)buf;
+            *(shortBuf++) = cast(short)sample1;
+            if (channels > 1)
+                *(shortBuf++) = cast(short)sample2;
+            if (channels > 2)
+                *(shortBuf++) = cast(short)sample1;
+            if (channels > 3)
+                *(shortBuf++) = cast(short)sample2;
+            if (channels > 4)
+                *(shortBuf++) = cast(short)sample1;
+            if (channels > 5)
+                *(shortBuf++) = cast(short)sample2;
         }
     }
 
     /// put samples in float format
     protected void putSamples(ubyte * buf, float sample1, float sample2) {
         if (sampleFormat == SampleFormat.float32) {
-            FloatConv floatConv;
-            floatConv.value = sample1;
-            buf[0] = floatConv.bytes.ptr[0];
-            buf[1] = floatConv.bytes.ptr[1];
-            buf[2] = floatConv.bytes.ptr[2];
-            buf[3] = floatConv.bytes.ptr[3];
-            if (channels > 1) {
-                floatConv.value = sample2;
-                buf[4] = floatConv.bytes.ptr[0];
-                buf[5] = floatConv.bytes.ptr[1];
-                buf[6] = floatConv.bytes.ptr[2];
-                buf[7] = floatConv.bytes.ptr[3];
-            }
-            // TODO: more channels
-        } else {
-            ShortConv shortConv;
+            float * floatBuf = cast(float*)buf;
+            *(floatBuf++) = sample1;
+            if (channels > 1)
+                *(floatBuf++) = sample2;
+            if (channels > 2)
+                *(floatBuf++) = sample1;
+            if (channels > 3)
+                *(floatBuf++) = sample2;
+            if (channels > 4)
+                *(floatBuf++) = sample1;
+            if (channels > 5)
+                *(floatBuf++) = sample2;
+        } else if (sampleFormat == SampleFormat.signed16) {
+            short * shortBuf = cast(short*)buf;
             int sample1i = cast(int)(sample1 * 32767.0f);
             int sample2i = cast(int)(sample2 * 32767.0f);
             limitShortRange(sample1i);
             limitShortRange(sample2i);
-            shortConv.value = cast(short)(sample1i);
-            buf[0] = shortConv.bytes.ptr[0];
-            buf[1] = shortConv.bytes.ptr[1];
-            if (channels > 1) {
-                shortConv.value = cast(short)(sample2i);
-                buf[2] = shortConv.bytes.ptr[0];
-                buf[3] = shortConv.bytes.ptr[1];
-            }
-            // TODO: more channels
+            *(shortBuf++) = cast(short)sample1i;
+            if (channels > 1)
+                *(shortBuf++) = cast(short)sample2i;
+            if (channels > 2)
+                *(shortBuf++) = cast(short)sample1i;
+            if (channels > 3)
+                *(shortBuf++) = cast(short)sample2i;
+            if (channels > 4)
+                *(shortBuf++) = cast(short)sample1i;
+            if (channels > 5)
+                *(shortBuf++) = cast(short)sample2i;
+        } else {
+            // unsupported format
         }
     }
 
