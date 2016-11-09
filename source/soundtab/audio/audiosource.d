@@ -4,6 +4,7 @@ enum AUDIO_SOURCE_SILENCE_FLAG = 1;
 
 enum SampleFormat {
     signed16,
+    signed32,
     float32
 }
 
@@ -310,6 +311,18 @@ class Mixer : AudioSource {
                 int sample = cast(int)(v * 32767.0f);
                 limitShortRange(sample);
                 ptr[i] = cast(short)sample;
+            }
+        } else if (sampleFormat == SampleFormat.signed32) {
+            // convert to short
+            int * ptr = cast(int*)buf;
+            for (int i = 0; i < bufSize; i++) {
+                float v = _mixBuffer.ptr[i];
+                if (v < -1)
+                    v = -1;
+                else if (v > 1)
+                    v = 1;
+                int sample = cast(int)(v * 0x7FFFFFFF);
+                ptr[i] = sample;
             }
         } else {
             // unsupported output format

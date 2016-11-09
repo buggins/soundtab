@@ -291,14 +291,14 @@ class AudioPlayback : Thread {
         if (fmt.wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
             WAVEFORMATEXTENSIBLE * formatEx = cast(WAVEFORMATEXTENSIBLE*)fmt;
             _format = *formatEx;
-            sampleFormat = (_format.SubFormat == MEDIASUBTYPE_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
+            sampleFormat = (_format.SubFormat == MEDIASUBTYPE_IEEE_FLOAT) ? SampleFormat.float32 : (_format.wBitsPerSample == 16 ? SampleFormat.signed16 : SampleFormat.signed32);
             channels = _format.nChannels;
             samplesPerSecond = _format.nSamplesPerSec;
             bitsPerSample = _format.wBitsPerSample;
             blockAlign = _format.nBlockAlign;
         } else {
             _format = *fmt;
-            sampleFormat = (_format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ? SampleFormat.float32 : SampleFormat.signed16;
+            sampleFormat = (_format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ? SampleFormat.float32 : (_format.wBitsPerSample == 16 ? SampleFormat.signed16 : SampleFormat.signed32);
             channels = _format.nChannels;
             samplesPerSecond = _format.nSamplesPerSec;
             bitsPerSample = _format.wBitsPerSample;
@@ -461,8 +461,10 @@ class AudioPlayback : Thread {
             hr = pRenderClient.GetBuffer(numFramesAvailable, pData);
             if (checkError(hr, "RenderClient.GetBuffer() failed")) break;
 
+            //Log.d("before loadData frames=", numFramesAvailable);
             // Get next 1/2-second of data from the audio source.
             hr = pMySource.loadData(numFramesAvailable, pData, flags);
+            //Log.d("after loadData");
 
             hr = pRenderClient.ReleaseBuffer(numFramesAvailable, flags);
             if (checkError(hr, "RenderClient.ReleaseBuffer() failed")) break;
