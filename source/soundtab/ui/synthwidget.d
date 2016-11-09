@@ -24,7 +24,7 @@ class PlayerPanel : GroupBox {
     private TextWidget _playFileName;
     private TextWidget _playPositionText;
     private SliderWidget _playSlider;
-    SliderController _volumeControl;
+    private SliderController _volumeControl;
     this() {
         super("playerControls", "Accompaniment"d, Orientation.Horizontal);
         layoutWidth = FILL_PARENT;
@@ -34,21 +34,25 @@ class PlayerPanel : GroupBox {
         _volumeControl = new SliderController(ControllerId.AccompanimentVolume, "Volume"d, 0, 1000, 1000);
 
         VerticalLayout sliderLayout = new VerticalLayout();
+        HorizontalLayout textLayout = new HorizontalLayout();
         sliderLayout.layoutWidth = FILL_PARENT;
+        textLayout.layoutWidth = FILL_PARENT;
         _playSlider = new SliderWidget("playPosition");
         _playSlider.layoutWidth = FILL_PARENT;
         _playSlider.setRange(0, 10000);
         _playSlider.position = 0;
         _playSlider.scrollEvent = &onScrollEvent;
         _playFileName = new TextWidget("playFileName", ""d);
-        _playFileName.layoutWidth = FILL_PARENT;
         _playFileName.alignment = Align.Center;
         _playPositionText = new TextWidget("playPositionText", ""d);
-        _playPositionText.layoutWidth = FILL_PARENT;
         _playPositionText.alignment = Align.Center;
-        sliderLayout.addChild(_playFileName);
+        textLayout.addChild(_playFileName);
+        textLayout.addChild(new HSpacer());
+        textLayout.addChild(_playPositionText);
+        sliderLayout.addChild(textLayout);
         sliderLayout.addChild(_playSlider);
-        sliderLayout.addChild(_playPositionText);
+        sliderLayout.margins = Rect(5, 0, 5, 0).pointsToPixels;
+        sliderLayout.padding = Rect(5, 0, 5, 0).pointsToPixels;
 
         addChild(_volumeControl);
         addChild(openButton);
@@ -142,6 +146,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
     SliderController _vibrato;
     SliderController _vibratoFreq;
     SliderController _pitchCorrection;
+    SliderController _volumeControl;
 
     PitchCorrector _corrector;
 
@@ -169,22 +174,29 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _mixer.addSource(_playerPanel._player);
         _controlsLayout.addChild(_playerPanel);
 
-        HorizontalLayout _controlsh = new HorizontalLayout();
+        GroupBox _controlsh = new GroupBox(null, "Instrument"d, Orientation.Horizontal);
         _controlsh.layoutWidth = FILL_PARENT;
         _controlsh.layoutHeight = WRAP_CONTENT;
-        _controlsh.margins = Rect(3,3,3,3);
+        //_controlsh.margins = Rect(3,3,3,3);
         _controlsLayout.addChild(_controlsh);
 
         int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
         _pitchCorrection = new SliderController(ControllerId.PitchCorrection, "Pitch correction", 0, 1000, corrValue);
         _pitchCorrection.onChange = &onController;
 
+        _volumeControl = new SliderController(ControllerId.InstrumentVolume, "Volume"d, 0, 1000, 1000);
+        _volumeControl.value = 1000;
+        _volumeControl.onChange = &onVolume;
+
         Instrument[] instr = getInstrumentList();
         StringListValue[] instrList;
         foreach(i; instr) {
             instrList ~= StringListValue(i.id, i.name);
         }
-        GroupBox gb = new GroupBox("instrgb", "Instrument"d);
+        VerticalLayout gb = new VerticalLayout("instrgb");
+        gb.addChild(new TextWidget(null, "Selected instrument:"d));
+        gb.margins = Rect(5, 0, 5, 0).pointsToPixels;
+        gb.padding = Rect(5, 0, 5, 0).pointsToPixels;
         string instrId = _frame.settings.instrumentId;
         _instrSelection = new ComboBox("instrument", instrList);
         int instrIndex = 0;
@@ -205,6 +217,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
             return true;
         };
         gb.addChild(_instrSelection);
+        _controlsh.addChild(_volumeControl);
         _controlsh.addChild(gb);
         _controlsh.addChild(_controllers);
 
@@ -277,6 +290,16 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         int corrValue = _frame.settings.getControllerValue(ControllerId.PitchCorrection, 0);
         _corrector.amount = corrValue;
         _pitchCorrection.value = corrValue;
+        int volume = _frame.settings.getControllerValue(ControllerId.InstrumentVolume, 1000);
+        _instrument.volume = volume / 1000.0f;
+        _volumeControl.value = volume;
+    }
+
+    protected void onVolume(SliderController source, int value) {
+        //_player.volume = value / 1000.0f;
+        if (_instrument)
+            _instrument.volume = value / 1000.0f;
+        _frame.settings.setControllerValue(ControllerId.InstrumentVolume, value);
     }
 
     void onController(SliderController source, int value) {

@@ -9,10 +9,18 @@
     "targetPath": "bin",
     "targetType": "executable",
 
+    "copyFiles-windows-x86_64": [
+         "libs/x86_64/libmpg123-0.dll"
+    ],
+
+    "copyFiles-windows-x86": [
+        "libs/x86/libmpg123-0.dll"
+    ],
+
     "dependencies": {
-        "dlangui": "~>0.9.42",
+        "dlangui": "~>0.9.46",
         "wasapi": "~>0.1.2",
-        "derelict-mpg123": "~>0.1.1",
+        "derelict-mpg123": "~>0.1.2",
         "derelict-wintab": "~>0.1.2"
     }
 }
