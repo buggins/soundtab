@@ -7,6 +7,7 @@ import dlangui.widgets.appframe;
 import dlangui.widgets.menu;
 import dlangui.dialogs.dialog;
 import dlangui.dialogs.settingsdialog;
+import dlangui.dialogs.filedlg;
 
 
 import soundtab.ui.actions;
@@ -127,9 +128,15 @@ class SoundFrame : AppFrame {
     /// create main menu
     override protected MainMenu createMainMenu() {
         MenuItem mainMenuItems = new MenuItem();
+
         MenuItem fileItem = new MenuItem(new Action(1, "File"d));
-        fileItem.add(ACTION_FILE_OPTIONS, ACTION_FILE_EXIT);
+        fileItem.add(ACTION_FILE_OPTIONS, ACTION_FILE_OPEN_ACCOMPANIMENT, ACTION_FILE_EXIT);
         mainMenuItems.add(fileItem);
+
+        MenuItem playItem = new MenuItem(new Action(2, "Play"d));
+        playItem.add(ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT);
+        mainMenuItems.add(playItem);
+
         MainMenu mainMenu = new MainMenu(mainMenuItems);
         return mainMenu;
     }
@@ -138,6 +145,22 @@ class SoundFrame : AppFrame {
     override protected Widget createBody() {
         _synth = new SynthWidget(this, _tablet, _playback);
         return _synth;
+    }
+
+    protected void openAccompanimentFile() {
+        import std.file;
+        FileDialog dlg = new FileDialog(UIString("Open accompaniment MP3 file"d), window, null);
+        dlg.addFilter(FileFilterEntry(UIString("MP3 files (*.mp3)"d), "*.mp3"));
+        dlg.dialogResult = delegate(Dialog dlg, const Action result) {
+            if (result.id == ACTION_OPEN.id) {
+                string filename = result.stringParam;
+                if (filename.exists && filename.isFile) {
+                    _settings.accompanimentFile = filename;
+                    _synth.openAccompanimentFile(filename);
+                }
+            }
+        };
+        dlg.show();
     }
 
     /// override to handle specific actions
@@ -150,6 +173,12 @@ class SoundFrame : AppFrame {
                     return true;
                 case Actions.FileOptions:
                     showPreferences();
+                    return true;
+                case Actions.FileOpenAccompaniment:
+                    openAccompanimentFile();
+                    return true;
+                case Actions.FilePlayPauseAccompaniment:
+                    _synth.playPauseAccomp();
                     return true;
                 default:
                     break;

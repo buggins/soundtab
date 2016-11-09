@@ -61,7 +61,7 @@ class Mp3Player : AudioSource {
     private short[] _sourceData;
     private int _sourcePosition;
     private int _sourceFrames;
-    private bool _paused;
+    private bool _paused = true;
 
     @property bool paused() { return _paused; }
     @property Mp3Player paused(bool pauseFlag) {
@@ -130,6 +130,7 @@ class Mp3Player : AudioSource {
             scope(exit)unlock();
             _loaded = false;
             _sourcePosition = 0;
+            _paused = true;
             if (_filename == filename) {
                 // opening the same file as already opened - just move to start
                 return true;

@@ -11,5 +11,5 @@ enum Actions : int {
 
 const Action ACTION_FILE_OPTIONS = new Action(Actions.FileOptions, "Options..."d);
 const Action ACTION_FILE_EXIT = new Action(Actions.FileExit, "Exit"d);
-const Action ACTION_FILE_OPEN_ACCOMPANIMENT = new Action(Actions.FileOpenAccompaniment, "Open .mp3"d);
-const Action ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT = new Action(Actions.FilePlayPauseAccompaniment, "Play"d);
+const Action ACTION_FILE_OPEN_ACCOMPANIMENT = new Action(Actions.FileOpenAccompaniment, "Open .mp3"d, null, KeyCode.F3, 0);
+const Action ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT = new Action(Actions.FilePlayPauseAccompaniment, "Play/Pause"d, null, KeyCode.F5, 0);

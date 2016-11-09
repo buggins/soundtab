@@ -249,6 +249,8 @@ enum ControllerId {
     Chorus,
     Reverb,
     Distortion,
+    InstrumentVolume,
+    AccompanimentVolume,
 }
 
 struct Controller {

@@ -23,8 +23,24 @@ class AudioSettings : SettingsFile {
         audio.setIntegerDef("minFrameMillis", 3);
     }
 
+    @property string accompanimentFile() {
+        Setting accomp = accompSettings();
+        return accomp.getString("file", null);
+    }
+
+    @property AudioSettings accompanimentFile(string fn) {
+        Setting accomp = accompSettings();
+        accomp.setString("file", fn);
+        return this;
+    }
+
     @property Setting audioSettings() {
         Setting res = _setting.objectByPath("audio/playback", true);
+        return res;
+    }
+
+    @property Setting accompSettings() {
+        Setting res = _setting.objectByPath("accompaniment", true);
         return res;
     }
 

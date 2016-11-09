@@ -21,16 +21,18 @@ import soundtab.audio.mp3player;
 
 class PlayerPanel : GroupBox {
     private Mp3Player _player;
+    private TextWidget _playFileName;
     private TextWidget _playPositionText;
     private SliderWidget _playSlider;
+    SliderController _volumeControl;
     this() {
         super("playerControls", "Accompaniment"d, Orientation.Horizontal);
         layoutWidth = FILL_PARENT;
         Widget openButton = new Button(ACTION_FILE_OPEN_ACCOMPANIMENT);
         Widget playButton = new Button(ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT);
-        TextWidget playFilename = new TextWidget("playFilename", "..."d);
-        playFilename.minWidth = 100.pointsToPixels;
-        playFilename.maxWidth = 200.pointsToPixels;
+
+        _volumeControl = new SliderController(ControllerId.AccompanimentVolume, "Volume"d, 0, 1000, 1000);
+
         VerticalLayout sliderLayout = new VerticalLayout();
         sliderLayout.layoutWidth = FILL_PARENT;
         _playSlider = new SliderWidget("playPosition");
@@ -38,19 +40,27 @@ class PlayerPanel : GroupBox {
         _playSlider.setRange(0, 10000);
         _playSlider.position = 0;
         _playSlider.scrollEvent = &onScrollEvent;
+        _playFileName = new TextWidget("playFileName", ""d);
+        _playFileName.layoutWidth = FILL_PARENT;
+        _playFileName.alignment = Align.Center;
         _playPositionText = new TextWidget("playPositionText", ""d);
         _playPositionText.layoutWidth = FILL_PARENT;
         _playPositionText.alignment = Align.Center;
-        sliderLayout.addChild(_playPositionText);
+        sliderLayout.addChild(_playFileName);
         sliderLayout.addChild(_playSlider);
+        sliderLayout.addChild(_playPositionText);
 
+        addChild(_volumeControl);
         addChild(openButton);
-        addChild(playFilename);
-        addChild(playButton);
         addChild(sliderLayout);
+        addChild(playButton);
         _player = new Mp3Player();
-        _player.loadFromFile("jmj-chronologie3.mp3");
         updatePlayPosition();
+        _volumeControl.onChange = &onVolume;
+    }
+
+    protected void onVolume(SliderController source, int value) {
+        _player.volume = value / 1000.0f;
     }
 
     PlayPosition _position;
@@ -66,14 +76,28 @@ class PlayerPanel : GroupBox {
         return ("%d:%02d".format(seconds / 60, (seconds % 60))).toUTF32;
     }
 
+    void playPauseAccomp() {
+        _player.paused = !_player.paused;
+    }
+
+    void openAccompanimentFile(string filename) {
+        if (!_player.loadFromFile(filename)) {
+            if (window)
+                window.showMessageBox("MP3 file opening error"d, "Cannot load MP3 file "d);
+        }
+    }
+
     void updatePlayPosition() {
         import std.path : baseName;
         import std.utf : toUTF32;
         _filename = _player.filename;
         _position = _player.position;
+        dstring fn = _filename ? _filename.baseName.toUTF32 : null;
+        if (!fn.length)
+            fn = "[no MP3 file opened]"d;
+        if (_playFileName.text != fn)
+            _playFileName.text = fn;
         dchar[] positionText;
-        positionText ~= _filename ? _filename.baseName.toUTF32 : "[no MP3 file opened]"d;
-        positionText ~= "   "d;
         positionText ~= secondsToString(_position.currentPosition);
         positionText ~= " / "d;
         positionText ~= secondsToString(_position.length);
@@ -205,6 +229,9 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
         _soundCanvas.setNoteRange(_noteRangeWidget.rangeStart, _noteRangeWidget.rangeEnd);
         _noteRangeWidget.onNoteRangeChange = &onNoteRangeChange;
 
+        string accompFile = _frame.settings.accompanimentFile;
+        if (accompFile)
+            _playerPanel.openAccompanimentFile(accompFile);
     }
 
     void setInstrument(string id) {
@@ -294,5 +321,13 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
     void updatePlayPosition() {
         _playerPanel.updatePlayPosition();
+    }
+
+    void playPauseAccomp() {
+        _playerPanel.playPauseAccomp();
+    }
+
+    void openAccompanimentFile(string filename) {
+        _playerPanel.openAccompanimentFile(filename);
     }
 }
