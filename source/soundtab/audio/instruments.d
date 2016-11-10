@@ -116,6 +116,14 @@ class FormantFilter {
     }
 
     void init(int samplesPerSecond) {
+        for (float f = 0; f <= 3.14; f += 0.1) {
+            float v = formantFunc(f);
+            Log.d("formantFunc(", f, ")=", v);
+        }
+        for (float f = 0; f <= 1; f += 0.02) {
+            float v = formantShape(f);
+            Log.d("formantShape(", f, ")=", v);
+        }
         if (this.samplesPerSecond == samplesPerSecond)
             return;
         this.samplesPerSecond = samplesPerSecond;
@@ -169,18 +177,24 @@ class FormantFilter {
             table.ptr[step] = gain;
     }
 
+    private static float formantFunc(float v) {
+        import std.math : cos;
+        float f = (cos(v) + 1) / 2;
+        f = f*f*f*f;
+        return f;
+    }
     /// for input values 0..1 return 1..0 shaped non-linearly
     private static float formantShape(float v) {
-        immutable float point0x = 0.4;
-        immutable float point0y = 1 / point0x;
-        immutable float point1x = 2;
-        immutable float point1y = 1 / point1x;
+        immutable float point0x = 0.0f;
+        immutable float point0y = formantFunc(point0x);
+        immutable float point1x = 3.14f;
+        immutable float point1y = formantFunc(point1x);
         immutable float diffX = (point1x - point0x);
         immutable float oneByDiffY = 1 / (point0y - point1y);
         // shape input value
         v = point0x + v * diffX;
         // apply function
-        v = 1 / v;
+        v = formantFunc(v);
         // shape output value
         v = (v - point1y) * oneByDiffY;
         return v;
@@ -1383,9 +1397,15 @@ Instrument[] getInstrumentList() {
         _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.6, 0.5, -0.4, 0.3, -0.2]);
         _instrumentList ~= new SineHarmonicWaveTable("strings2", "Strings 2", [0.5, -0.4, 0.3, -0.3, 0.25, -0.3, 0.15, -0.15, 0.1, -0.05, 0.04, -0.03, 0.02, -0.01]);
         _instrumentList ~= new SineHarmonicWaveTable("brass", "Brass", [0.1, -0.3, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 0.4, -0.35, 0.2, -0.1, 0.05, -0.02]);
-        _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", [0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.25f, 0.20f, 0.15f, 0.10f, 0.08f, 0.06f, 0.05f, 0.04f, 0.03f, 0.02f],
-                                                    0.2f,
-                                                    [FormantInfo(700, 1.0f, 1.5f), FormantInfo(1100, 0.8f, 1.5f), FormantInfo(2600, 0.4f, 1.9f)]);
+        _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", [0.8f, -0.6f, +0.4f, -0.3f, +0.25f, -0.2f, 0.15f, -0.12f, 0.10f, -0.08f, 0.07f, -0.06f, 0.05f, -0.04f, 0.03f, -0.02f],
+                                                    0.1f,
+                                                    [FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]);
+        _instrumentList ~= new SineHarmonicFormants("voiceAh2", "Voice Ah2", [0.8f, -0.7f, +0.65f, -0.6f, +0.55f, -0.5f, 0.4f, -0.3f, 0.20f, -0.15f, 0.10f, -0.09f, 0.08f, -0.07f, 0.06f, -0.05f, 0.04f, -0.03f, 0.02f, -0.01f],
+                                                    0.05f,
+                                                    //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
+                                                    //[FormantInfo(740, 1.0f, 1.4f), FormantInfo(1180, 0.9f, 1.4f), FormantInfo(2640, 0.3f, 1.4f)]
+                                                    [FormantInfo(740, 1.0f, 1.3f), FormantInfo(1180, 0.8f, 1.3f), FormantInfo(2640, 0.2f, 1.5f)]
+                                                    );
         _instrumentList ~= new MyAudioSource();
     }
     return _instrumentList;
