@@ -90,15 +90,65 @@ struct FormantInfo {
     float width;
 }
 
-class FormantFilter {
-    private float baseGain = 0.2;
-    private FormantInfo[] formants;
+/// base implementation for formant filter - just limit min and max frequences
+class FormantFilterBase {
     private int samplesPerSecond;
-    int maxFreqStepCutMul256;
     private int maxFreqStep;
     private int maxFreqStepCut;
     private int minFreqStep;
     private int minFreqStepCut;
+    private int minFreqShapingLen;
+    private int maxFreqShapingLen;
+
+    /// returns step*256 for frequency
+    int freqToStep(float freq) {
+        return cast(int)(WAVETABLE_SIZE  * 256L * freq / samplesPerSecond);
+    }
+
+    void init(int samplesPerSecond) {
+        this.samplesPerSecond = samplesPerSecond;
+        float maxFreqCut = 22000; // max freq cutoff
+        float maxFreq = maxFreqCut * 0.8; // max freq when shaping starts
+        /// limit max freqs according by sample rate
+        float halfFreq = samplesPerSecond / 2.0f * 0.9;
+        if (maxFreq > halfFreq) {
+            float scale = halfFreq / maxFreq;
+            maxFreqCut *= scale;
+            maxFreq *= scale;
+        }
+        maxFreqStep = freqToStep(maxFreq);
+        maxFreqStepCut = freqToStep(maxFreqCut);
+        minFreqStep = freqToStep(40); // start of low freq shaping = 40Hz
+        minFreqStepCut = freqToStep(15); // cutoff lowest freq = 15Hz
+        minFreqShapingLen = minFreqStep - minFreqStepCut;
+        maxFreqShapingLen = maxFreqStepCut - maxFreqStep;
+    }
+
+    /// apply filter to value; returns false if frequency is above max cutoff
+    bool apply(int step, ref float value) {
+        if (step < minFreqStepCut) {
+            value = 0;
+            return true; // cut off, but return true to allow higher frequences
+        }
+        if (step > maxFreqStepCut) {
+            value = 0;
+            return false; // cut off, return false to stop iteration for higher frequences
+        }
+        if (step < minFreqStep) {
+            // shape lower frequencies
+            value *= (step - minFreqStepCut) / cast(float)minFreqShapingLen;
+        } else if (step > maxFreqStep) {
+            // shape higher frequencies
+            value *= (step - maxFreqStep) / cast(float)maxFreqShapingLen;
+        }
+        return true;
+    }
+}
+
+class FormantFilter : FormantFilterBase {
+    private float baseGain = 0.2;
+    private FormantInfo[] formants;
+    int maxFreqStepCutMul256;
     /// right shift bits for input step value (step*256)
     private int stepShift;
     private int interpolationStepModShift;
@@ -110,12 +160,8 @@ class FormantFilter {
         init(44100);
     }
 
-    /// returns step*256 for frequency
-    int freqToStep(float freq) {
-        return cast(int)(WAVETABLE_SIZE  * 256L * freq / samplesPerSecond);
-    }
-
-    void init(int samplesPerSecond) {
+    override void init(int samplesPerSecond) {
+        /*
         for (float f = 0; f <= 3.14; f += 0.1) {
             float v = formantFunc(f);
             Log.d("formantFunc(", f, ")=", v);
@@ -124,26 +170,14 @@ class FormantFilter {
             float v = formantShape(f);
             Log.d("formantShape(", f, ")=", v);
         }
+        */
         if (this.samplesPerSecond == samplesPerSecond)
             return;
-        this.samplesPerSecond = samplesPerSecond;
-        float maxFreqCut = 22000;
-        float maxFreq = maxFreqCut * 0.8;
-        /// limit max freqs according by sample rate
-        float halfFreq = samplesPerSecond / 2.0f * 0.9;
-        if (maxFreq > halfFreq) {
-            float scale = halfFreq / maxFreq;
-            maxFreqCut *= scale;
-            maxFreq *= scale;
-        }
-        maxFreqStep = freqToStep(maxFreq);
-        maxFreqStepCut = freqToStep(maxFreqCut);
-        maxFreqStepCutMul256 = maxFreqStepCut;
-        minFreqStep = freqToStep(50);
-        minFreqStepCut = freqToStep(20);
+        super.init(samplesPerSecond);
         int len = maxFreqStepCut;
         stepShift = 0;
         interpolationStepModShift = 8;
+        maxFreqStepCutMul256 = maxFreqStepCut;
         // limit table size
         while (len > 4096) {
             len /= 2;
@@ -224,11 +258,13 @@ class FormantFilter {
         }
     }
 
-    /// calculate gain for osciller step
-    float apply(int stepMul256) {
+    /// apply filter to value; returns false if frequency is above max cutoff
+    override bool apply(int stepMul256, ref float value) {
         int step = stepMul256 >> stepShift;
-        if (step < minFreqStepCut || step > maxFreqStepCut)
-            return 0;
+        if (step < minFreqStepCut || step > maxFreqStepCut) { // cutoff freq test
+            value = 0;
+            return step < maxFreqStepCut;
+        }
         // calc interpolation coefficient 0..255
         int stepMod = stepMul256;
         if (interpolationStepModShift < 0)
@@ -240,7 +276,8 @@ class FormantFilter {
         float v0 = table[step];
         float v1 = table[step + 1];
         // interpolate between values
-        return (v0 * stepMod + v1 * (256 - stepMod)) / 256;
+        value *= (v0 * stepMod + v1 * (256 - stepMod)) / 256;
+        return true;
     }
 }
 
@@ -380,11 +417,11 @@ class OscillerF {
 }
 
 class FormantFilteredOscillerF {
-    FormantFilter _formantFilter;
+    FormantFilterBase _formantFilter;
     immutable(float[]) _formants;
     int[] _formantPhases;
     float[] _wavetable;
-    this(immutable(float[]) formants, FormantFilter formantFilter) {
+    this(immutable(float[]) formants, FormantFilterBase formantFilter) {
         _wavetable = SIN_TABLE_F;
         _formants = formants;
         _formantFilter = formantFilter;
@@ -396,7 +433,9 @@ class FormantFilteredOscillerF {
         int formantStep = step_mul_256;
         for (int i = 0; i < _formants.length; i++) {
             int phase = _formantPhases[i];
-            res += _formantFilter.apply(formantStep) * _formants[i] * _wavetable[phase >> 8];
+            float formantGain = _formants[i];
+            _formantFilter.apply(formantStep, formantGain);
+            res += formantGain * _wavetable[phase >> 8];
             // update formant phase by formant step
             _formantPhases[i] = (phase + formantStep) & WAVETABLE_SIZE_MASK_MUL_256;
             // next formant
@@ -998,7 +1037,7 @@ class SineHarmonicWaveTable : InstrumentBaseF {
 }
 
 class SineHarmonicFormants : InstrumentBaseF {
-    FormantFilter _formantFilter;
+    FormantFilterBase _formantFilter;
     FormantFilteredOscillerF _tone1;
     FormantFilteredOscillerF _chorusTone1;
     FormantFilteredOscillerF _chorusTone2;
@@ -1020,7 +1059,7 @@ class SineHarmonicFormants : InstrumentBaseF {
     this(string id, dstring name, immutable(float[])formants, float baseGain, FormantInfo[] filterFormants) {
         _id = id;
         _name = name;
-        _formantFilter = new FormantFilter(baseGain, filterFormants);
+        _formantFilter = filterFormants.length ? new FormantFilter(baseGain, filterFormants) : new FormantFilterBase();
         //immutable(float[]) formants = null;
         //_tone1 = new OscillerF(_wavetable, 1, 0, [0.7, 0.5, 0.3, 0.1, 0.05, 0.05]);
         _tone1 = new FormantFilteredOscillerF(formants, _formantFilter);
@@ -1400,11 +1439,11 @@ Instrument[] getInstrumentList() {
         _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", [0.8f, -0.6f, +0.4f, -0.3f, +0.25f, -0.2f, 0.15f, -0.12f, 0.10f, -0.08f, 0.07f, -0.06f, 0.05f, -0.04f, 0.03f, -0.02f],
                                                     0.1f,
                                                     [FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]);
-        _instrumentList ~= new SineHarmonicFormants("voiceAh2", "Voice Ah2", [0.8f, -0.7f, +0.65f, -0.6f, +0.55f, -0.5f, 0.4f, -0.3f, 0.20f, -0.15f, 0.10f, -0.09f, 0.08f, -0.07f, 0.06f, -0.05f, 0.04f, -0.03f, 0.02f, -0.01f],
-                                                    0.05f,
+        _instrumentList ~= new SineHarmonicFormants("voiceAh2", "Voice Ah2", [0.05f, -0.1f, 0.18f, -0.25f, 0.28f, -0.65f, 0.55f, -0.22f, 0.23f, -0.45f, 0.25f, -0.18f, 0.15f, -0.10f, 0.09f, -0.08f, 0.07f, -0.07f, 0.08f, -0.09f, 0.10f, -0.15f, 0.20f, -0.18f, 0.10f, -0.08f, 0.06f, -0.05f],
+                                                    1,
                                                     //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
                                                     //[FormantInfo(740, 1.0f, 1.4f), FormantInfo(1180, 0.9f, 1.4f), FormantInfo(2640, 0.3f, 1.4f)]
-                                                    [FormantInfo(740, 1.0f, 1.3f), FormantInfo(1180, 0.8f, 1.3f), FormantInfo(2640, 0.2f, 1.5f)]
+                                                    null
                                                     );
         _instrumentList ~= new MyAudioSource();
     }

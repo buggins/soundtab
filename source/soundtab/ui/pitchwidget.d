@@ -46,11 +46,16 @@ class PitchWidget : Widget {
         dstring noteName = noteToFullName(currentNote);
         FontRef fnt = font;
         Point sz = fnt.textSize(noteName);
-        fnt.drawText(buf, rc.middlex - sz.x / 2, rc.middley - sz.y/2, noteName, 0xA0A0A0);
+        fnt.drawText(buf, rc.middlex - sz.x / 2, rc.middley - sz.y/2, noteName, 0x8090A0);
 
         int x = cast(int)(rc.left + rc.width * (noteDiff + 0.5));
         buf.fillRect(Rect(x, rc.top, x+1, rc.bottom), 0x40FF0000);
 
+        // draw frequency
+        import std.string : format;
+        import std.utf : toUTF32;
+        dstring freq = "%.2fHz".format(_currentPitch).toUTF32;
+        fnt.drawText(buf, rc.left, rc.middley - sz.y/2, freq, 0x808080);
     }
 
     void setPitch(double freq) {
