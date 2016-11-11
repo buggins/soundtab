@@ -3,7 +3,9 @@ module soundtab.audio.instruments;
 import dlangui.core.logger;
 import soundtab.ui.noteutil;
 import soundtab.audio.audiosource;
-import std.math : log2, exp2, sin, PI;
+import std.math : log2, exp2, sin, cos, pow, PI;
+
+immutable float TWO_PI = PI * 2;
 
 immutable WAVETABLE_SIZE_BITS = 14;
 immutable WAVETABLE_SIZE = 1 << WAVETABLE_SIZE_BITS;
@@ -11,6 +13,60 @@ immutable WAVETABLE_SIZE_MASK = WAVETABLE_SIZE - 1;
 immutable WAVETABLE_SIZE_MASK_MUL_256 = (1 << (WAVETABLE_SIZE_BITS + 8)) - 1;
 immutable WAVETABLE_SCALE_BITS = 14;
 immutable WAVETABLE_SCALE = (1 << WAVETABLE_SCALE_BITS);
+
+//float linearToDb(float f) {
+//
+//}
+/// decibels to linear
+float dbToLinear(float f) {
+    return pow(10.0f, f / 20);
+}
+
+interface Filter {
+    void setSampleRate(int samplesPerSecond);
+    float tick(float input);
+}
+
+abstract class FilterBase  : Filter {
+    int _sampleRate = 44100;
+    void setSampleRate(int samplesPerSecond) {
+        _sampleRate = samplesPerSecond;
+    }
+}
+
+class Formant  : FilterBase {
+    this() {
+    }
+    void setResonance(float frequency, float radius) {
+        _radius = radius;
+        _frequency = frequency;
+        _a[2] = radius * radius;
+        _a[1] = -2.0f * radius * cos( TWO_PI * frequency / _sampleRate );
+        // Use zeros at +- 1 and normalize the filter peak gain.
+        _b[0] = 0.5 - 0.5 * _a[2];
+        _b[1] = 0.0;
+        _b[2] = -_b[0];
+    }
+    float tick(float input) {
+        _inputs[0] = _gain * input;
+        _lastFrame = _b[0] * _inputs[0] + _b[1] * _inputs[1] + _b[2] * _inputs[2];
+        _lastFrame -= _a[2] * _outputs[2] + _a[1] * _outputs[1];
+        _inputs[2] = _inputs[1];
+        _inputs[1] = _inputs[0];
+        _outputs[2] = _outputs[1];
+        _outputs[1] = _lastFrame;
+        return _lastFrame;
+    }
+    int _sampleRate = 44100;
+    float _frequency = 400;
+    float _radius = 0;
+    float _gain = 1.0f;
+    float[4] _a = [0,0,0,0];
+    float[4] _b = [0,0,0,0];
+    float[4] _inputs = [0,0,0,0];
+    float[4] _outputs = [0,0,0,0];
+    float _lastFrame = 0;
+}
 
 int[] genWaveTableSin() {
     int[] res;
@@ -29,6 +85,19 @@ float[] genWaveTableSinF() {
     for (int i = 0; i < WAVETABLE_SIZE; i++) {
         double f = i * 2 * PI / WAVETABLE_SIZE;
         double v = sin(f);
+        res[i] = cast(float)v;
+    }
+    return res;
+}
+
+// (cos^2 + 1)/2 half period
+float[] genWaveTableCosSquaredF() {
+    float[] res;
+    res.length = WAVETABLE_SIZE + 1;
+    for (int i = 0; i <= WAVETABLE_SIZE; i++) {
+        double f = i * PI / WAVETABLE_SIZE;
+        double v = (cos(f) + 1) / 2;
+        v = v * v;
         res[i] = cast(float)v;
     }
     return res;
@@ -62,12 +131,14 @@ __gshared int[] SIN_TABLE;
 __gshared int[] SQUARE_TABLE;
 __gshared float[] SIN_TABLE_F;
 __gshared float[] SQUARE_TABLE_F;
+__gshared float[] COS_2_TABLE_F;
 
 __gshared static this() {
     SIN_TABLE = genWaveTableSin();
     SIN_TABLE_F = genWaveTableSinF();
     SQUARE_TABLE = genWaveTableSquare();
     SQUARE_TABLE_F = genWaveTableSquareF();
+    COS_2_TABLE_F = genWaveTableCosSquaredF();
 }
 
 void interpolate(float[] arr, float startValue, float endValue) {
@@ -125,7 +196,8 @@ class FormantFilterBase {
     }
 
     /// apply filter to value; returns false if frequency is above max cutoff
-    bool apply(int step, ref float value) {
+    bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
+        int step = fundamentalFreqStep * harmonicNumber;
         if (step < minFreqStepCut) {
             value = 0;
             return true; // cut off, but return true to allow higher frequences
@@ -142,6 +214,92 @@ class FormantFilterBase {
             value *= (step - maxFreqStep) / cast(float)maxFreqShapingLen;
         }
         return true;
+    }
+}
+
+class VowelFormantFilter : FormantFilterBase {
+    float baseFreq;
+    float formant1freq;
+    float formant1gain;
+    float formant12freq;
+    float formant12gain;
+    float formant2freq;
+    float formant2gain;
+    float formant23freq;
+    float formant23gain;
+    float formant3freq;
+    float formant3gain;
+
+    int baseStep;
+    int formant1step;
+    int formant12step;
+    int formant2step;
+    int formant23step;
+    int formant3step;
+    int formant34step;
+
+    this(float baseFreq, float formant1freq, float formant1gain, float formant2freq, float formant2gain, float formant3freq, float formant3gain) {
+        this.baseFreq = baseFreq;
+        this.formant1freq = formant1freq;
+        this.formant1gain = formant1gain;
+        this.formant2freq = formant2freq;
+        this.formant2gain = formant2gain;
+        this.formant3freq = formant3freq;
+        this.formant3gain = formant3gain;
+        //formant12freq = (formant1freq * formant1gain + formant2freq * formant2gain) / (formant1gain + formant2gain);
+        formant12freq = (formant1freq + formant2freq) / 2;
+        formant12gain = (formant1gain + formant2gain) / 4;
+        //formant23freq = (formant2freq * formant2gain + formant3freq * formant3gain) / (formant2gain + formant3gain);
+        formant23freq = (formant2freq + formant3freq) / 2;
+        formant23gain = (formant2gain + formant3gain) / 10;
+    }
+
+    override void init(int samplesPerSecond) {
+        super.init(samplesPerSecond);
+        baseStep = freqToStep(baseFreq);
+        formant1step = freqToStep(formant1freq);
+        formant12step = freqToStep(formant12freq);
+        formant2step = freqToStep(formant2freq);
+        formant23step= freqToStep(formant23freq);
+        formant3step = freqToStep(formant3freq);
+        formant34step = freqToStep(formant3freq * 1.2f);
+        //for (float f = 10; f < 3000; f+=0.1) {
+        //    float v = 1;
+        //    apply(freqToStep(f), 1, v);
+        //    Log.d(" freq ", f, " : ", v);
+        //}
+        import std.string : format;
+        char[] s;
+        for (float f = 10; f < 3000; f+=0.1) {
+            float v = 1;
+            apply(freqToStep(f), 1, v);
+            s ~= "%.2f\t%.5f".format(f,v);
+            s ~= "\n";
+        }
+        Log.d("FreqTable:\n", s);
+    }
+
+    /// apply filter to value; returns false if frequency is above max cutoff
+    override bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
+        // correct formant frequences based on fundamental frequency
+        long correctedStep = fundamentalFreqStep; //(fundamentalFreqStep * 90 + baseStep * 10) / 100;
+        long step = correctedStep * harmonicNumber;
+        if (step < formant1step) {
+            value *= COS_2_TABLE_F[cast(int)((formant1step - step) * cast(long)WAVETABLE_SIZE / formant1step)] * formant1gain;
+        } else if (step < formant12step) {
+            value *= COS_2_TABLE_F[cast(int)((step - formant1step) * cast(long)WAVETABLE_SIZE / (formant12step - formant1step))] * (formant1gain - formant12gain) + formant12gain;
+        } else if (step < formant2step) {
+            value *= COS_2_TABLE_F[cast(int)((formant2step - step) * cast(long)WAVETABLE_SIZE / (formant2step - formant12step))] * (formant2gain - formant12gain) + formant12gain;
+        } else if (step < formant23step) {
+            value *= COS_2_TABLE_F[cast(int)((step - formant2step) * cast(long)WAVETABLE_SIZE / (formant23step - formant2step))] * (formant2gain - formant23gain) + formant23gain;
+        } else if (step < formant3step) {
+            value *= COS_2_TABLE_F[cast(int)((formant3step - step) * cast(long)WAVETABLE_SIZE / (formant3step - formant23step))] * (formant3gain - formant23gain) + formant23gain;
+        } else if (step < formant34step) {
+            value *= COS_2_TABLE_F[cast(int)((step - formant3step) * cast(long)WAVETABLE_SIZE / (formant34step - formant3step))] * formant3gain;
+        } else {
+            value = 0;
+        }
+        return super.apply(fundamentalFreqStep, harmonicNumber, value);
     }
 }
 
@@ -259,7 +417,8 @@ class FormantFilter : FormantFilterBase {
     }
 
     /// apply filter to value; returns false if frequency is above max cutoff
-    override bool apply(int stepMul256, ref float value) {
+    override bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
+        int stepMul256 = fundamentalFreqStep * harmonicNumber;
         int step = stepMul256 >> stepShift;
         if (step < minFreqStepCut || step > maxFreqStepCut) { // cutoff freq test
             value = 0;
@@ -434,7 +593,8 @@ class FormantFilteredOscillerF {
         for (int i = 0; i < _formants.length; i++) {
             int phase = _formantPhases[i];
             float formantGain = _formants[i];
-            _formantFilter.apply(formantStep, formantGain);
+            if (!_formantFilter.apply(step_mul_256, i + 1, formantGain))
+                break; // frequency is too high
             res += formantGain * _wavetable[phase >> 8];
             // update formant phase by formant step
             _formantPhases[i] = (phase + formantStep) & WAVETABLE_SIZE_MASK_MUL_256;
@@ -1059,7 +1219,13 @@ class SineHarmonicFormants : InstrumentBaseF {
     this(string id, dstring name, immutable(float[])formants, float baseGain, FormantInfo[] filterFormants) {
         _id = id;
         _name = name;
-        _formantFilter = filterFormants.length ? new FormantFilter(baseGain, filterFormants) : new FormantFilterBase();
+        //_formantFilter = filterFormants.length ? new FormantFilter(baseGain, filterFormants) : new FormantFilterBase();
+        _formantFilter = filterFormants.length 
+                ? new VowelFormantFilter(80, filterFormants[0].freq, filterFormants[0].gain,
+                                         filterFormants[1].freq, filterFormants[1].gain,
+                                         filterFormants[2].freq, filterFormants[2].gain)
+                : new FormantFilterBase();
+        
         //immutable(float[]) formants = null;
         //_tone1 = new OscillerF(_wavetable, 1, 0, [0.7, 0.5, 0.3, 0.1, 0.05, 0.05]);
         _tone1 = new FormantFilteredOscillerF(formants, _formantFilter);
@@ -1436,9 +1602,14 @@ Instrument[] getInstrumentList() {
         _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.6, 0.5, -0.4, 0.3, -0.2]);
         _instrumentList ~= new SineHarmonicWaveTable("strings2", "Strings 2", [0.5, -0.4, 0.3, -0.3, 0.25, -0.3, 0.15, -0.15, 0.1, -0.05, 0.04, -0.03, 0.02, -0.01]);
         _instrumentList ~= new SineHarmonicWaveTable("brass", "Brass", [0.1, -0.3, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 0.4, -0.35, 0.2, -0.1, 0.05, -0.02]);
-        _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", [0.8f, -0.6f, +0.4f, -0.3f, +0.25f, -0.2f, 0.15f, -0.12f, 0.10f, -0.08f, 0.07f, -0.06f, 0.05f, -0.04f, 0.03f, -0.02f],
+        _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", 
+                                                    //[0.9f, -0.85f, +0.8f, -0.75f, +0.7f, -0.65f, 0.6f, -0.55f, 0.5f, -0.45f, 0.4f, -0.4f, 0.35f, -0.30f, 0.25f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f],
+                                                    //[0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f],
+                                                    [0.8f, -0.6f, +0.4f, -0.3f, +0.25f, -0.2f, 0.15f, -0.12f, 0.10f, -0.08f, 0.07f, -0.06f, 0.05f, -0.04f, 0.03f, -0.02f],
                                                     0.1f,
-                                                    [FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]);
+                                                    [FormantInfo(740, 1.0f, 1.4f), FormantInfo(1180, 0.9f, 1.4f), FormantInfo(2640, 0.3f, 1.4f)]
+                                                    //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
+                                                    );
         _instrumentList ~= new SineHarmonicFormants("voiceAh2", "Voice Ah2", [0.05f, -0.1f, 0.18f, -0.25f, 0.28f, -0.65f, 0.55f, -0.22f, 0.23f, -0.45f, 0.25f, -0.18f, 0.15f, -0.10f, 0.09f, -0.08f, 0.07f, -0.07f, 0.08f, -0.09f, 0.10f, -0.15f, 0.20f, -0.18f, 0.10f, -0.08f, 0.06f, -0.05f],
                                                     1,
                                                     //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
