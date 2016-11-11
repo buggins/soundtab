@@ -9,6 +9,25 @@ import core.sys.windows.windows;
 
 import soundtab.ui.frame;
 
+//version = DumpPulse;
+
+version(DumpPulse)
+void convertRaw(string filename) {
+    import std.file;
+    import std.conv : to;
+    short[] data = cast(short[])read(filename);
+    char[] buf;
+    buf ~= "    ";
+    for (int i = 0; i < data.length; i++) {
+        buf ~= to!string((cast(int)data[i]));
+        buf ~= ", ";
+        if (i % 16 == 15)
+            buf ~= "\n    ";
+    }
+    buf ~= "\n";
+    write(filename ~ ".d", buf);
+}
+
 /// entry point for dlangui based application
 extern (C) int UIAppMain(string[] args) {
 
@@ -17,6 +36,9 @@ extern (C) int UIAppMain(string[] args) {
         Log.e("CoInitialize failed");
 
     //initAudio();
+    version(DumpPulse) {
+        convertRaw("impuls20.raw");
+    }
 
     // create window
     Log.d("Creating window");
