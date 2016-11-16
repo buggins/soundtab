@@ -413,6 +413,8 @@
    <Folder name="soundtab">
     <Folder name="audio">
      <File path="source\soundtab\audio\audiosource.d" />
+     <File path="source\soundtab\audio\filters.d" />
+     <File path="source\soundtab\audio\generators.d" />
      <File path="source\soundtab\audio\instruments.d" />
      <File path="source\soundtab\audio\mp3player.d" />
      <File path="source\soundtab\audio\playback.d" />
