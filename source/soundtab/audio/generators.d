@@ -99,9 +99,272 @@ float[] genWaveTableRescaledF(immutable short[] data) {
         float v1 = data[index % data.length];
         float v2 = data[(index + 1) % data.length];
         float v = (cast(long)v1 * (WAVETABLE_SIZE - indexMod) + v2 * indexMod) / WAVETABLE_SIZE;
+        v /= 32768;
         res[i] = v;
     }
     return res;
+}
+
+class Osciller {
+    int[] _origWavetable;
+    int[] _wavetable;
+    int _scale;
+    int _offset;
+    int _phase; // *256
+    int _step;
+    this(int[] wavetable, int scale = WAVETABLE_SCALE, int offset = 0) {
+        _origWavetable = wavetable;
+        rescale(scale, offset);
+    }
+    void rescale(int scale = WAVETABLE_SCALE, int offset = 0) {
+        _scale = scale;
+        _offset = offset;
+        if (scale == WAVETABLE_SCALE && offset == 0) {
+            _wavetable = _origWavetable;
+        } else {
+            _wavetable = _origWavetable.dup;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                _wavetable[i] = _origWavetable[i] * scale / WAVETABLE_SCALE + offset;
+            }
+        }
+    }
+    void setStep(int step_mul_256) {
+        _step = step_mul_256;
+    }
+    /// set step based on pitch frequency (Hz) and samples per second
+    void setPitch(double freq, int samplesPerSecond) {
+        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
+    }
+    int step(int step_mul_256) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    // step by value with gain (*0x10000)
+    int stepWithGain(int step_mul_256, int gain) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return (_wavetable[_phase >> 8] * gain) >> 16;
+    }
+    // use current step value
+    int step() {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    // multiplies passed value to next step and divide by 0x10000
+    int stepMultiply(int n) {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        int value = _wavetable[_phase >> 8];
+        return cast(int)((cast(long)n * value) >> 16);
+    }
+    // multiplies passed value to next step using modulation gain relative to 0x10000
+    int stepMultiply(int n, int gain) {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        int value = _origWavetable[_phase >> 8];
+        if (gain > 30)
+            value = ((value * gain) >> WAVETABLE_SCALE_BITS) + 0x10000;
+        return cast(int)((cast(long)n * value) >> 16);
+    }
+    void resetPhase() {
+        _phase = 0;
+    }
+}
+
+class OscillerF {
+    float[] _origWavetable;
+    float[] _wavetable;
+    float _scale;
+    float _offset;
+    int _phase; // *256
+    int _step;
+    this(float[] wavetable, float scale = 1.0f, float offset = 0, immutable(float[]) formants = null) {
+        _origWavetable = wavetable;
+        rescale(scale, offset, formants);
+    }
+    void rescale(float scale = 1.0f, float offset = 0, immutable(float[]) formants = null) {
+        _scale = scale;
+        _offset = offset;
+        if (scale == 1.0f && offset == 0 && !formants.length) {
+            _wavetable = _origWavetable;
+        } else {
+            _wavetable = _origWavetable.dup;
+            float maxAmp = 0;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                float v = _origWavetable[i];
+                if (formants.length) {
+                    v *= formants[0];
+                    for (int j = 2; j < formants.length; j++) {
+                        v += _origWavetable[i * j % _origWavetable.length] * formants[j];
+                    }
+                }
+                _wavetable[i] = v;
+                if (v > maxAmp)
+                    maxAmp = v;
+                else if (-v > maxAmp)
+                    maxAmp = -v;
+            }
+            float mult = 1 / maxAmp;
+            for (int i = 0; i < _origWavetable.length; i++) {
+                _wavetable[i] = _wavetable[i] * mult * scale + offset;
+            }
+        }
+    }
+    void setStep(int step_mul_256) {
+        _step = step_mul_256;
+    }
+    /// set step based on pitch frequency (Hz) and samples per second
+    void setPitch(double freq, int samplesPerSecond) {
+        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
+    }
+    float step(int step_mul_256) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    float stepPitchMultiply(int step_mul_256, int mult_by_100000) {
+        step_mul_256 = cast(int)((cast(long)step_mul_256 * mult_by_100000) / 100000);
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    // step by value with gain (*0x10000)
+    float stepWithGain(int step_mul_256, float gain) {
+        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8] * gain;
+    }
+    // use current step value
+    float step() {
+        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
+        return _wavetable[_phase >> 8];
+    }
+    void resetPhase() {
+        _phase = 0;
+    }
+}
+
+struct Interpolator {
+    private int _target;
+    private int _value;
+    private int _step;
+    private int _dstep;
+    private bool _const = true;
+    private bool _zero = true;
+    /// reset to const
+    void reset(int v) {
+        _value = v;
+        _step = _dstep = 0;
+        _const = true;
+        _zero = (_value == 0);
+    }
+    /// reset to target value
+    void reset() {
+        _value = _target;
+        _step = _dstep = 0;
+        _const = true;
+        _zero = (_value == 0);
+    }
+    /// set target value for interpolation
+    @property void target(int newValue) {
+        _target = newValue;
+    }
+    /// get target value
+    @property int target() { return _target; }
+    /// get current value
+    @property int value() { return _value; }
+    /// returns true if interpolator will return const value
+    @property bool isConst() { return _const; }
+    /// returns true if interpolator will return const value 0
+    @property bool isZero() { return _zero; }
+    /// set interpolation parameters to interpolate values in range _value .. _newValue in len frames
+    void init(int len) {
+        if (_target == _value) {
+            _const = true;
+            _zero = (_value == 0);
+        } else {
+            _const = false;
+            _zero = false;
+            int delta = _target - _value;
+            _step = delta / len;
+            _dstep = delta % len;
+        }
+    }
+    /// get next interpolated value
+    @property int next() {
+        if (_const)
+            return _value;
+        int res = _value;
+        _value += _step;
+        if (_dstep > 0) {
+            _value++;
+            _dstep--;
+        } else if (_dstep < 0) {
+            _value--;
+            _dstep++;
+        }
+        return res;
+    }
+}
+
+/// float value interpolator
+struct InterpolatorF {
+    private float _target = 0;
+    private float _value = 0;
+    private float _step = 0;
+    private bool _const = true;
+    private bool _zero = true;
+    /// reset to const
+    void reset(float v) {
+        _value = v;
+        _step = 0;
+        _const = true;
+        _zero = (v == 0);
+    }
+    /// reset to target
+    void reset() {
+        _value = _target;
+        _step = 0;
+        _const = true;
+        _zero = (_value == 0);
+    }
+    /// returns true if interpolator will return const value
+    @property bool isConst() { return _const; }
+    /// returns true if interpolator will return const value 0
+    @property bool isZero() { return _zero; }
+    /// set target value for interpolation
+    @property void target(float newValue) {
+        _target = newValue;
+    }
+    /// get target value
+    @property float target() { return _target; }
+    /// get current value
+    @property float value() { return _value; }
+    /// set interpolation parameters to interpolate values in range _value .. _target in len frames
+    void init(int len) {
+        _step = (_target - _value) / len;
+        if (_step >= -0.0000000001f && _step <= 0.0000000001f) {
+            _const = true;
+            _zero = (_value >= -0.000001f && _value <= 0.000001f);
+        } else {
+            _const = false;
+            _zero = false;
+        }
+    }
+    /// get next interpolated value
+    @property float next() {
+        if (_const)
+            return _value;
+        float res = _value;
+        _value += _step;
+        return res;
+    }
+    /// limit speed of target change 
+    void limitTargetChange(int frameMillis, int attackMillis, int releaseMillis) {
+        if (_value < _target) {
+            // attack
+            if (frameMillis < attackMillis)
+                _target = _value + (_target - _value) * frameMillis / attackMillis;
+        } else {
+            // release
+            if (frameMillis < releaseMillis)
+                _target = _value + (_target - _value) * frameMillis / releaseMillis;
+        }
+    }
 }
 
 __gshared int[] SIN_TABLE;
@@ -110,6 +373,73 @@ __gshared float[] SIN_TABLE_F;
 __gshared float[] SQUARE_TABLE_F;
 __gshared float[] COS_2_TABLE_F;
 __gshared float[] VOICE_IMPULSE_F;
+__gshared float[] SAW_TABLE_F;
+__gshared float[] SAW_TABLE_2_F;
+__gshared float[] VOICE_EXPERIMENTAL_F;
+__gshared float[] VOICE_EX_1_F;
+
+float[] normalize(float[] data, float amp = 1) {
+    float[] res = data.dup;
+    float s = 0;
+    foreach(sample; res)
+        s+=sample;
+    s /= res.length;
+    foreach(ref sample; res)
+        sample -= s;
+    float minv = res[0];
+    float maxv = res[0];
+    foreach(sample; res) {
+        if (minv > sample)
+            minv = sample;
+        if (maxv < sample)
+            maxv = sample;
+    }
+    if (-minv > maxv)
+        maxv = -minv;
+    float mult = amp / maxv;
+    foreach(ref sample; res)
+        sample *= mult;
+    return res;
+}
+
+immutable ulong RANDOM_MULTIPLIER  = 0x5DEECE66D;
+immutable ulong RANDOM_MASK = ((cast(ulong)1 << 48) - 1);
+immutable ulong RANDOM_ADDEND = cast(ulong)0xB;
+
+struct Random {
+    ulong seed;
+    //Random();
+    void setSeed(ulong value) {
+        seed = (value ^ RANDOM_MULTIPLIER) & RANDOM_MASK;
+    }
+
+    int next(int bits) {
+        seed = (seed * RANDOM_MULTIPLIER + RANDOM_ADDEND) & RANDOM_MASK;
+        return cast(int)(seed >> (48 - bits));
+    }
+
+    int nextInt() {
+        return next(31);
+    }
+    int nextInt(int n) {
+        if ((n & -n) == n)  // i.e., n is a power of 2
+            return cast(int)((n * cast(long)next(31)) >> 31);
+        int bits, val;
+        do {
+            bits = next(31);
+            val = bits % n;
+        } while (bits - val + (n - 1) < 0);
+        return val;
+    }
+}
+
+struct Noise {
+    Random _rnd;
+    float tick() {
+        int value = _rnd.next(16) - 32768;
+        return value / 32768.0f;
+    }
+}
 
 __gshared static this() {
     SIN_TABLE = genWaveTableSin();
@@ -118,5 +448,62 @@ __gshared static this() {
     SQUARE_TABLE_F = genWaveTableSquareF();
     COS_2_TABLE_F = genWaveTableCosSquaredF();
     VOICE_IMPULSE_F = genWaveTableRescaledF(VOICE_IMPULSE);
+    SAW_TABLE_F = genWaveTableRescaledF([0, 32767, 0, -32767]);
+    SAW_TABLE_2_F = genWaveTableRescaledF([0, 32767]);
+    //VOICE_EXPERIMENTAL_F = genWaveTableRescaledF([0, 32767, 30000, -24000, -20000, 16384, 15000, -12000, -10000, 8000, -4000, 2000, -1000, 0, 0, 0, 0,]);
+    //VOICE_EXPERIMENTAL_F = genWaveTableRescaledF([0, 32767, 30000, 4000, -32767, -30000, -4000, -2000, 0, 0, 0, 0, 0, 0, 0, 0,]);
+    //VOICE_EXPERIMENTAL_F = genWaveTableRescaledF([0, 32767, 32767, -24000, -24000, 8000, 8000, -4000, -4000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,]);
+    VOICE_EX_1_F = genWaveTableRescaledF([
+        0,
+        30000,
+        30000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -100,
+        -300,
+        -500,
+        -1000,
+        -2000,
+        -3000,
+        -2000,
+        -1000,
+    ]);
+    VOICE_EXPERIMENTAL_F = genWaveTableRescaledF([
+            0,
+            25000,
+            30000,
+            32000,
+            30000,
+            26000,
+            15000,
+            12000,
+            10000,
+            7000,
+            4000,
+            3000,
+            2000,
+            1000,
+            500,
+            0,
+            -500,
+            -1000,
+            -2000,
+            -3000,
+            -4000,
+            -5000,
+            -6000,
+            -7000,
+            -10000,
+            -12000,
+            -15000,
+            -26000,
+            -30000,
+            -32000,
+            -30000,
+            -25000,
+    ]);
 }
-

@@ -17,15 +17,19 @@ void convertRaw(string filename) {
     import std.conv : to;
     short[] data = cast(short[])read(filename);
     char[] buf;
+    char[] buf2;
     buf ~= "    ";
     for (int i = 0; i < data.length; i++) {
         buf ~= to!string((cast(int)data[i]));
+        buf2 ~= to!string((cast(int)data[i]));
         buf ~= ", ";
         if (i % 16 == 15)
             buf ~= "\n    ";
+        buf2 ~= "\n";
     }
     buf ~= "\n";
     write(filename ~ ".d", buf);
+    write(filename ~ ".csv", buf2);
 }
 
 /// entry point for dlangui based application

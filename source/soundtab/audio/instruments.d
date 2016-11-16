@@ -7,6 +7,22 @@ import soundtab.audio.filters;
 import soundtab.audio.generators;
 import std.math : log2, exp2, sin, cos, pow, PI;
 
+/// Standard controller IDs
+enum ControllerId {
+    PitchCorrection,
+    VibratoAmount,
+    VibratoFreq,
+    Chorus,
+    Reverb,
+    Distortion,
+    InstrumentVolume,
+    AccompanimentVolume,
+    None,
+    YAxisController,
+    Noise
+}
+
+
 void interpolate(float[] arr, float startValue, float endValue) {
     int len = cast(int)arr.length;
     float diff = endValue - startValue;
@@ -21,472 +37,6 @@ void interpolate(int[] arr, int startValue, int endValue) {
         arr.ptr[i] = startValue + diff * i / len;
 }
 
-struct FormantInfo {
-    float freq;
-    float gain;
-    float width;
-}
-
-/// base implementation for formant filter - just limit min and max frequences
-class FormantFilterBase {
-    private int samplesPerSecond;
-    private int maxFreqStep;
-    private int maxFreqStepCut;
-    private int minFreqStep;
-    private int minFreqStepCut;
-    private int minFreqShapingLen;
-    private int maxFreqShapingLen;
-
-    /// returns step*256 for frequency
-    int freqToStep(float freq) {
-        return cast(int)(WAVETABLE_SIZE  * 256L * freq / samplesPerSecond);
-    }
-
-    void init(int samplesPerSecond) {
-        this.samplesPerSecond = samplesPerSecond;
-        float maxFreqCut = 22000; // max freq cutoff
-        float maxFreq = maxFreqCut * 0.8; // max freq when shaping starts
-        /// limit max freqs according by sample rate
-        float halfFreq = samplesPerSecond / 2.0f * 0.9;
-        if (maxFreq > halfFreq) {
-            float scale = halfFreq / maxFreq;
-            maxFreqCut *= scale;
-            maxFreq *= scale;
-        }
-        maxFreqStep = freqToStep(maxFreq);
-        maxFreqStepCut = freqToStep(maxFreqCut);
-        minFreqStep = freqToStep(40); // start of low freq shaping = 40Hz
-        minFreqStepCut = freqToStep(15); // cutoff lowest freq = 15Hz
-        minFreqShapingLen = minFreqStep - minFreqStepCut;
-        maxFreqShapingLen = maxFreqStepCut - maxFreqStep;
-    }
-
-    /// apply filter to value; returns false if frequency is above max cutoff
-    bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
-        int step = fundamentalFreqStep * harmonicNumber;
-        if (step < minFreqStepCut) {
-            value = 0;
-            return true; // cut off, but return true to allow higher frequences
-        }
-        if (step > maxFreqStepCut) {
-            value = 0;
-            return false; // cut off, return false to stop iteration for higher frequences
-        }
-        if (step < minFreqStep) {
-            // shape lower frequencies
-            value *= (step - minFreqStepCut) / cast(float)minFreqShapingLen;
-        } else if (step > maxFreqStep) {
-            // shape higher frequencies
-            value *= (step - maxFreqStep) / cast(float)maxFreqShapingLen;
-        }
-        return true;
-    }
-}
-
-class VowelFormantFilter : FormantFilterBase {
-    float baseFreq;
-    float formant1freq;
-    float formant1gain;
-    float formant12freq;
-    float formant12gain;
-    float formant2freq;
-    float formant2gain;
-    float formant23freq;
-    float formant23gain;
-    float formant3freq;
-    float formant3gain;
-
-    int baseStep;
-    int formant1step;
-    int formant12step;
-    int formant2step;
-    int formant23step;
-    int formant3step;
-    int formant34step;
-
-    this(float baseFreq, float formant1freq, float formant1gain, float formant2freq, float formant2gain, float formant3freq, float formant3gain) {
-        this.baseFreq = baseFreq;
-        this.formant1freq = formant1freq;
-        this.formant1gain = formant1gain;
-        this.formant2freq = formant2freq;
-        this.formant2gain = formant2gain;
-        this.formant3freq = formant3freq;
-        this.formant3gain = formant3gain;
-        //formant12freq = (formant1freq * formant1gain + formant2freq * formant2gain) / (formant1gain + formant2gain);
-        formant12freq = (formant1freq + formant2freq) / 2;
-        formant12gain = (formant1gain + formant2gain) / 4;
-        //formant23freq = (formant2freq * formant2gain + formant3freq * formant3gain) / (formant2gain + formant3gain);
-        formant23freq = (formant2freq + formant3freq) / 2;
-        formant23gain = (formant2gain + formant3gain) / 10;
-    }
-
-    override void init(int samplesPerSecond) {
-        super.init(samplesPerSecond);
-        baseStep = freqToStep(baseFreq);
-        formant1step = freqToStep(formant1freq);
-        formant12step = freqToStep(formant12freq);
-        formant2step = freqToStep(formant2freq);
-        formant23step= freqToStep(formant23freq);
-        formant3step = freqToStep(formant3freq);
-        formant34step = freqToStep(formant3freq * 1.2f);
-        //for (float f = 10; f < 3000; f+=0.1) {
-        //    float v = 1;
-        //    apply(freqToStep(f), 1, v);
-        //    Log.d(" freq ", f, " : ", v);
-        //}
-        import std.string : format;
-        char[] s;
-        for (float f = 10; f < 3000; f+=0.1) {
-            float v = 1;
-            apply(freqToStep(f), 1, v);
-            s ~= "%.2f\t%.5f".format(f,v);
-            s ~= "\n";
-        }
-        Log.d("FreqTable:\n", s);
-    }
-
-    /// apply filter to value; returns false if frequency is above max cutoff
-    override bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
-        // correct formant frequences based on fundamental frequency
-        long correctedStep = fundamentalFreqStep; //(fundamentalFreqStep * 90 + baseStep * 10) / 100;
-        long step = correctedStep * harmonicNumber;
-        if (step < formant1step) {
-            value *= COS_2_TABLE_F[cast(int)((formant1step - step) * cast(long)WAVETABLE_SIZE / formant1step)] * formant1gain;
-        } else if (step < formant12step) {
-            value *= COS_2_TABLE_F[cast(int)((step - formant1step) * cast(long)WAVETABLE_SIZE / (formant12step - formant1step))] * (formant1gain - formant12gain) + formant12gain;
-        } else if (step < formant2step) {
-            value *= COS_2_TABLE_F[cast(int)((formant2step - step) * cast(long)WAVETABLE_SIZE / (formant2step - formant12step))] * (formant2gain - formant12gain) + formant12gain;
-        } else if (step < formant23step) {
-            value *= COS_2_TABLE_F[cast(int)((step - formant2step) * cast(long)WAVETABLE_SIZE / (formant23step - formant2step))] * (formant2gain - formant23gain) + formant23gain;
-        } else if (step < formant3step) {
-            value *= COS_2_TABLE_F[cast(int)((formant3step - step) * cast(long)WAVETABLE_SIZE / (formant3step - formant23step))] * (formant3gain - formant23gain) + formant23gain;
-        } else if (step < formant34step) {
-            value *= COS_2_TABLE_F[cast(int)((step - formant3step) * cast(long)WAVETABLE_SIZE / (formant34step - formant3step))] * formant3gain;
-        } else {
-            value = 0;
-        }
-        return super.apply(fundamentalFreqStep, harmonicNumber, value);
-    }
-}
-
-class FormantFilter : FormantFilterBase {
-    private float baseGain = 0.2;
-    private FormantInfo[] formants;
-    int maxFreqStepCutMul256;
-    /// right shift bits for input step value (step*256)
-    private int stepShift;
-    private int interpolationStepModShift;
-    private float[] table;
-
-    this(float baseGain, FormantInfo[] formants) {
-        this.baseGain = baseGain;
-        this.formants = formants;
-        init(44100);
-    }
-
-    override void init(int samplesPerSecond) {
-        /*
-        for (float f = 0; f <= 3.14; f += 0.1) {
-            float v = formantFunc(f);
-            Log.d("formantFunc(", f, ")=", v);
-        }
-        for (float f = 0; f <= 1; f += 0.02) {
-            float v = formantShape(f);
-            Log.d("formantShape(", f, ")=", v);
-        }
-        */
-        if (this.samplesPerSecond == samplesPerSecond)
-            return;
-        super.init(samplesPerSecond);
-        int len = maxFreqStepCut;
-        stepShift = 0;
-        interpolationStepModShift = 8;
-        maxFreqStepCutMul256 = maxFreqStepCut;
-        // limit table size
-        while (len > 4096) {
-            len /= 2;
-            maxFreqStep /= 2;
-            maxFreqStepCut /= 2;
-            minFreqStep /= 2;
-            minFreqStepCut /= 2;
-            stepShift++;
-            interpolationStepModShift--;
-        }
-        table.length = len + 5;
-        table[0..$] = 0;
-        interpolate(table[minFreqStepCut .. minFreqStep], 0, baseGain);
-        interpolate(table[minFreqStep .. maxFreqStep], baseGain, baseGain);
-        interpolate(table[maxFreqStep .. maxFreqStepCut], baseGain, 0);
-        for (int i = 0; i < formants.length; i++) {
-            addFormant(formants[i]);
-        }
-    }
-
-    private void applyFormant(int step, float gain) {
-        if (step < minFreqStepCut || step > maxFreqStepCut || gain <= 0)
-            return;
-        gain += baseGain;
-        if (step < minFreqStep) {
-            gain *= 1 - (minFreqStep - step) / cast(float)(minFreqStep - minFreqStepCut);
-        } else if (step > maxFreqStep) {
-            gain *= 1 - (step - maxFreqStep) / cast(float)(maxFreqStepCut - maxFreqStep);
-        }
-        if (table.ptr[step] < gain)
-            table.ptr[step] = gain;
-    }
-
-    private static float formantFunc(float v) {
-        import std.math : cos;
-        float f = (cos(v) + 1) / 2;
-        f = f*f*f*f;
-        return f;
-    }
-    /// for input values 0..1 return 1..0 shaped non-linearly
-    private static float formantShape(float v) {
-        immutable float point0x = 0.0f;
-        immutable float point0y = formantFunc(point0x);
-        immutable float point1x = 3.14f;
-        immutable float point1y = formantFunc(point1x);
-        immutable float diffX = (point1x - point0x);
-        immutable float oneByDiffY = 1 / (point0y - point1y);
-        // shape input value
-        v = point0x + v * diffX;
-        // apply function
-        v = formantFunc(v);
-        // shape output value
-        v = (v - point1y) * oneByDiffY;
-        return v;
-    }
-
-    private void addFormant(ref FormantInfo formant) {
-        int step0 = freqToStep(formant.freq) >> stepShift;
-        int maxstep = freqToStep(formant.freq * formant.width) >> stepShift;
-        int minstep = freqToStep(formant.freq / formant.width) >> stepShift;
-        float gain = formant.gain - baseGain;
-        if (gain <= 0)
-            return;
-        applyFormant(step0, gain);
-        int lenPlus = maxstep - step0;
-        int lenMinus = step0 - minstep;
-        for (int i = 1; i < lenPlus; i++) {
-            float f = i / cast(float) lenPlus;
-            f = formantShape(f); // 0..1
-            float k = f * gain;
-            applyFormant(step0 + i, k);
-        }
-        for (int i = 1; i < lenMinus; i++) {
-            float f = (i / cast(float) lenMinus); // 0..1
-            f = formantShape(f); // 0..1
-            float k = f * gain;
-            applyFormant(step0 - i, k);
-        }
-    }
-
-    /// apply filter to value; returns false if frequency is above max cutoff
-    override bool apply(int fundamentalFreqStep, int harmonicNumber, ref float value) {
-        int stepMul256 = fundamentalFreqStep * harmonicNumber;
-        int step = stepMul256 >> stepShift;
-        if (step < minFreqStepCut || step > maxFreqStepCut) { // cutoff freq test
-            value = 0;
-            return step < maxFreqStepCut;
-        }
-        // calc interpolation coefficient 0..255
-        int stepMod = stepMul256;
-        if (interpolationStepModShift < 0)
-            stepMod >>= -interpolationStepModShift;
-        else if (interpolationStepModShift > 0)
-            stepMod <<= interpolationStepModShift;
-        stepMod &= 255;
-        // get two values
-        float v0 = table[step];
-        float v1 = table[step + 1];
-        // interpolate between values
-        value *= (v0 * stepMod + v1 * (256 - stepMod)) / 256;
-        return true;
-    }
-}
-
-class Osciller {
-    int[] _origWavetable;
-    int[] _wavetable;
-    int _scale;
-    int _offset;
-    int _phase; // *256
-    int _step;
-    this(int[] wavetable, int scale = WAVETABLE_SCALE, int offset = 0) {
-        _origWavetable = wavetable;
-        rescale(scale, offset);
-    }
-    void rescale(int scale = WAVETABLE_SCALE, int offset = 0) {
-        _scale = scale;
-        _offset = offset;
-        if (scale == WAVETABLE_SCALE && offset == 0) {
-            _wavetable = _origWavetable;
-        } else {
-            _wavetable = _origWavetable.dup;
-            for (int i = 0; i < _origWavetable.length; i++) {
-                _wavetable[i] = _origWavetable[i] * scale / WAVETABLE_SCALE + offset;
-            }
-        }
-    }
-    void setStep(int step_mul_256) {
-        _step = step_mul_256;
-    }
-    /// set step based on pitch frequency (Hz) and samples per second
-    void setPitch(double freq, int samplesPerSecond) {
-        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
-    }
-    int step(int step_mul_256) {
-        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8];
-    }
-    // step by value with gain (*0x10000)
-    int stepWithGain(int step_mul_256, int gain) {
-        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-        return (_wavetable[_phase >> 8] * gain) >> 16;
-    }
-    // use current step value
-    int step() {
-        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8];
-    }
-    // multiplies passed value to next step and divide by 0x10000
-    int stepMultiply(int n) {
-        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
-        int value = _wavetable[_phase >> 8];
-        return cast(int)((cast(long)n * value) >> 16);
-    }
-    // multiplies passed value to next step using modulation gain relative to 0x10000
-    int stepMultiply(int n, int gain) {
-        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
-        int value = _origWavetable[_phase >> 8];
-        if (gain > 30)
-            value = ((value * gain) >> WAVETABLE_SCALE_BITS) + 0x10000;
-        return cast(int)((cast(long)n * value) >> 16);
-    }
-    void resetPhase() {
-        _phase = 0;
-    }
-}
-
-class OscillerF {
-    FormantFilter _formantFilter;
-    float[] _origWavetable;
-    float[] _wavetable;
-    float _scale;
-    float _offset;
-    int _phase; // *256
-    int _step;
-    this(float[] wavetable, float scale = 1.0f, float offset = 0, immutable(float[]) formants = null, FormantFilter formantFilter = null) {
-        _origWavetable = wavetable;
-        _formantFilter = formantFilter;
-        rescale(scale, offset, formants);
-    }
-    void rescale(float scale = 1.0f, float offset = 0, immutable(float[]) formants = null) {
-        _scale = scale;
-        _offset = offset;
-        if (scale == 1.0f && offset == 0 && !formants.length) {
-            _wavetable = _origWavetable;
-        } else {
-            _wavetable = _origWavetable.dup;
-            float maxAmp = 0;
-            for (int i = 0; i < _origWavetable.length; i++) {
-                float v = _origWavetable[i];
-                if (formants.length) {
-                    v *= formants[0];
-                    for (int j = 2; j < formants.length; j++) {
-                        v += _origWavetable[i * j % _origWavetable.length] * formants[j];
-                    }
-                }
-                _wavetable[i] = v;
-                if (v > maxAmp)
-                    maxAmp = v;
-                else if (-v > maxAmp)
-                    maxAmp = -v;
-            }
-            float mult = 1 / maxAmp;
-            for (int i = 0; i < _origWavetable.length; i++) {
-                _wavetable[i] = _wavetable[i] * mult * scale + offset;
-            }
-        }
-    }
-    void setStep(int step_mul_256) {
-        _step = step_mul_256;
-    }
-    /// set step based on pitch frequency (Hz) and samples per second
-    void setPitch(double freq, int samplesPerSecond) {
-        _step = cast(int)(WAVETABLE_SIZE  * 256 * freq / samplesPerSecond);
-    }
-    float step(int step_mul_256) {
-        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8];
-    }
-    float stepPitchMultiply(int step_mul_256, int mult_by_100000) {
-        step_mul_256 = cast(int)((cast(long)step_mul_256 * mult_by_100000) / 100000);
-        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8];
-    }
-    // step by value with gain (*0x10000)
-    float stepWithGain(int step_mul_256, float gain) {
-        _phase = (_phase + step_mul_256) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8] * gain;
-    }
-    // use current step value
-    float step() {
-        _phase = (_phase + _step) & WAVETABLE_SIZE_MASK_MUL_256;
-        return _wavetable[_phase >> 8];
-    }
-    void resetPhase() {
-        _phase = 0;
-    }
-}
-
-class FormantFilteredOscillerF {
-    FormantFilterBase _formantFilter;
-    immutable(float[]) _formants;
-    int[] _formantPhases;
-    float[] _wavetable;
-    this(immutable(float[]) formants, FormantFilterBase formantFilter) {
-        _wavetable = SIN_TABLE_F;
-        _formants = formants;
-        _formantFilter = formantFilter;
-        _formantPhases = new int[_formants.length];
-    }
-    /// move using particular step
-    float step(int step_mul_256) {
-        float res = 0;
-        int formantStep = step_mul_256;
-        for (int i = 0; i < _formants.length; i++) {
-            int phase = _formantPhases[i];
-            float formantGain = _formants[i];
-            if (!_formantFilter.apply(step_mul_256, i + 1, formantGain))
-                break; // frequency is too high
-            res += formantGain * _wavetable[phase >> 8];
-            // update formant phase by formant step
-            _formantPhases[i] = (phase + formantStep) & WAVETABLE_SIZE_MASK_MUL_256;
-            // next formant
-            formantStep += step_mul_256;
-        }
-        return res;
-    }
-    /// reset phases to zero
-    void resetPhase() {
-        _formantPhases[0 .. $] = 0;
-    }
-}
-
-enum ControllerId {
-    PitchCorrection,
-    VibratoAmount,
-    VibratoFreq,
-    Chorus,
-    Reverb,
-    Distortion,
-    InstrumentVolume,
-    AccompanimentVolume,
-    None,
-    YAxisController
-}
 
 struct Controller {
     ControllerId id;
@@ -496,134 +46,6 @@ struct Controller {
     int value;
 }
 
-struct Interpolator {
-    private int _target;
-    private int _value;
-    private int _step;
-    private int _dstep;
-    private bool _const = true;
-    private bool _zero = true;
-    /// reset to const
-    void reset(int v) {
-        _value = v;
-        _step = _dstep = 0;
-        _const = true;
-        _zero = (_value == 0);
-    }
-    /// reset to target value
-    void reset() {
-        _value = _target;
-        _step = _dstep = 0;
-        _const = true;
-        _zero = (_value == 0);
-    }
-    /// set target value for interpolation
-    @property void target(int newValue) {
-        _target = newValue;
-    }
-    /// get target value
-    @property int target() { return _target; }
-    /// get current value
-    @property int value() { return _value; }
-    /// returns true if interpolator will return const value
-    @property bool isConst() { return _const; }
-    /// returns true if interpolator will return const value 0
-    @property bool isZero() { return _zero; }
-    /// set interpolation parameters to interpolate values in range _value .. _newValue in len frames
-    void init(int len) {
-        if (_target == _value) {
-            _const = true;
-            _zero = (_value == 0);
-        } else {
-            _const = false;
-            _zero = false;
-            int delta = _target - _value;
-            _step = delta / len;
-            _dstep = delta % len;
-        }
-    }
-    /// get next interpolated value
-    @property int next() {
-        if (_const)
-            return _value;
-        int res = _value;
-        _value += _step;
-        if (_dstep > 0) {
-            _value++;
-            _dstep--;
-        } else if (_dstep < 0) {
-            _value--;
-            _dstep++;
-        }
-        return res;
-    }
-}
-
-/// float value interpolator
-struct InterpolatorF {
-    private float _target = 0;
-    private float _value = 0;
-    private float _step = 0;
-    private bool _const = true;
-    private bool _zero = true;
-    /// reset to const
-    void reset(float v) {
-        _value = v;
-        _step = 0;
-        _const = true;
-        _zero = (v == 0);
-    }
-    /// reset to target
-    void reset() {
-        _value = _target;
-        _step = 0;
-        _const = true;
-        _zero = (_value == 0);
-    }
-    /// returns true if interpolator will return const value
-    @property bool isConst() { return _const; }
-    /// returns true if interpolator will return const value 0
-    @property bool isZero() { return _zero; }
-    /// set target value for interpolation
-    @property void target(float newValue) {
-        _target = newValue;
-    }
-    /// get target value
-    @property float target() { return _target; }
-    /// get current value
-    @property float value() { return _value; }
-    /// set interpolation parameters to interpolate values in range _value .. _target in len frames
-    void init(int len) {
-        _step = (_target - _value) / len;
-        if (_step >= -0.0000000001f && _step <= 0.0000000001f) {
-            _const = true;
-            _zero = (_value >= -0.000001f && _value <= 0.000001f);
-        } else {
-            _const = false;
-            _zero = false;
-        }
-    }
-    /// get next interpolated value
-    @property float next() {
-        if (_const)
-            return _value;
-        float res = _value;
-        _value += _step;
-        return res;
-    }
-    /// limit speed of target change 
-    void limitTargetChange(int frameMillis, int attackMillis, int releaseMillis) {
-        if (_value < _target) {
-            // attack
-            if (frameMillis < attackMillis)
-                _target = _value + (_target - _value) * frameMillis / attackMillis;
-        } else {
-            // release
-            if (frameMillis < releaseMillis)
-                _target = _value + (_target - _value) * frameMillis / releaseMillis;
-        }
-    }
-}
 
 class Instrument : AudioSource {
 
@@ -742,11 +164,13 @@ class InstrumentBaseF : Instrument {
     Interpolator  _vibratoFreq;
     InterpolatorF _chorus;
     InterpolatorF _distortion;
+    InterpolatorF _noise;
 
     float _targetVibratoAmount = 0;
     float _targetVibratoFreq = 10;
     float _targetChorus = 0;
     float _targetDistortion = 0;
+    float _targetNoise = 0;
 
     protected override void calcParams() {
         // copy dynamic values
@@ -757,6 +181,7 @@ class InstrumentBaseF : Instrument {
         _vibratoAmount.target = _targetVibratoAmount;
         _vibratoFreq.target = freqToStepMul256(_targetVibratoFreq);
         _distortion.target = _targetDistortion;
+        _noise.target = _targetNoise;
     }
 
     protected void interpolateParams(int frameCount) {
@@ -771,6 +196,7 @@ class InstrumentBaseF : Instrument {
             _vibratoAmount.reset();
             _vibratoFreq.reset();
             _distortion.reset();
+            _noise.reset();
         }
         _pitch.init(frameCount);
         _chorus.init(frameCount);
@@ -778,6 +204,7 @@ class InstrumentBaseF : Instrument {
         _vibratoAmount.init(frameCount);
         _vibratoFreq.init(frameCount);
         _distortion.init(frameCount);
+        _noise.init(frameCount);
     }
 
     override protected void onFormatChanged() {
@@ -799,6 +226,10 @@ class InstrumentBaseF : Instrument {
             case ControllerId.Chorus:
                 // 1 .. 20 hz
                 _targetChorus = value / 1000.0f;
+                break;
+            case ControllerId.Noise:
+                // 1 .. 20 hz
+                _targetNoise = value / 1000.0f;
                 break;
             case ControllerId.Distortion:
                 _targetDistortion = value / 1000.0f;
@@ -1062,17 +493,65 @@ class SineHarmonicWaveTable : InstrumentBaseF {
 
 }
 
-class SineHarmonicFormants : InstrumentBaseF {
-    FormantFilterBase _formantFilter;
-    FormantFilteredOscillerF _tone1;
-    FormantFilteredOscillerF _chorusTone1;
-    FormantFilteredOscillerF _chorusTone2;
-    FormantFilteredOscillerF _chorusTone3;
-    FormantFilteredOscillerF _chorusTone4;
-    FormantFilteredOscillerF _chorusTone5;
-    FormantFilteredOscillerF _chorusTone6;
-    FormantFilteredOscillerF _chorusTone7;
-    FormantFilteredOscillerF _chorusTone8;
+float[] mulSequence(float firstValue, float mult, int len) {
+    float[] res = new float[len];
+    float value = firstValue;
+    for (int i = 0; i < len; i++) {
+        res[i] = value;
+        value *= mult;
+    }
+    return res;
+}
+
+class PhonemeOscillerF : OscillerF {
+    PhonemeFormantsFilter _formantFilter;
+    OneZero _onezero;
+    OnePole _onepole;
+    Noise _noise;
+    this(PhonemeType phoneme, float formantFreqMult = 1) {
+        super(SAW_TABLE_F, 1, 0, mulSequence(1, -0.3, 20).dup);//VOICE_IMPULSE_F SAW_TABLE_F VOICE_EXPERIMENTAL_F
+        //super(VOICE_EX_1_F);//VOICE_IMPULSE_F SAW_TABLE_F VOICE_EXPERIMENTAL_F VOICE_EX_1_F
+        _formantFilter = new PhonemeFormantsFilter(phoneme, formantFreqMult);
+        _onezero = new OneZero();
+        _onepole = new OnePole();
+        _onezero.setZero( -0.9 );
+        _onepole.setPole( 0.9 );
+    }
+    void setPhoneme(PhonemeType phoneme, float formantFreqMult = 1) {
+        _formantFilter.setPhoneme(phoneme, formantFreqMult);
+    }
+    void setSampleRate(int samplesPerSecond) {
+        _formantFilter.setSampleRate(samplesPerSecond);
+    }
+    float step(int step_mul_256, float noiseGain) {
+        int oldPhase = _phase;
+        float value = super.step(step_mul_256);
+        //if (oldPhase > _phase)
+        //    value = 1;
+        //else
+        //    value = 0;
+        if ((oldPhase >> 8) < WAVETABLE_SIZE / 12) {
+            if (noiseGain > 0)
+                value += _noise.tick() * noiseGain;
+        }
+
+        value = _onepole.tick( _onezero.tick( value ) );
+
+        value = _formantFilter.tick(value);
+        return value;
+    }
+}
+
+class PhonemeSynth : InstrumentBaseF {
+    PhonemeOscillerF _tone1;
+    PhonemeOscillerF _chorusTone1;
+    PhonemeOscillerF _chorusTone2;
+    PhonemeOscillerF _chorusTone3;
+    PhonemeOscillerF _chorusTone4;
+    PhonemeOscillerF _chorusTone5;
+    PhonemeOscillerF _chorusTone6;
+    PhonemeOscillerF _chorusTone7;
+    PhonemeOscillerF _chorusTone8;
     OscillerF _vibrato1;
     OscillerF _chorusVibrato1;
     OscillerF _chorusVibrato2;
@@ -1082,27 +561,18 @@ class SineHarmonicFormants : InstrumentBaseF {
     OscillerF _chorusVibrato6;
     OscillerF _chorusVibrato7;
     OscillerF _chorusVibrato8;
-    this(string id, dstring name, immutable(float[])formants, float baseGain, FormantInfo[] filterFormants) {
+    this(string id, dstring name, PhonemeType phoneme) {
         _id = id;
         _name = name;
-        //_formantFilter = filterFormants.length ? new FormantFilter(baseGain, filterFormants) : new FormantFilterBase();
-        _formantFilter = filterFormants.length 
-                ? new VowelFormantFilter(80, filterFormants[0].freq, filterFormants[0].gain,
-                                         filterFormants[1].freq, filterFormants[1].gain,
-                                         filterFormants[2].freq, filterFormants[2].gain)
-                : new FormantFilterBase();
-        
-        //immutable(float[]) formants = null;
-        //_tone1 = new OscillerF(_wavetable, 1, 0, [0.7, 0.5, 0.3, 0.1, 0.05, 0.05]);
-        _tone1 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone1 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone2 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone3 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone4 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone5 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone6 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone7 = new FormantFilteredOscillerF(formants, _formantFilter);
-        _chorusTone8 = new FormantFilteredOscillerF(formants, _formantFilter);
+        _tone1 = new PhonemeOscillerF(phoneme);
+        _chorusTone1 = new PhonemeOscillerF(phoneme, 1.01f);
+        _chorusTone2 = new PhonemeOscillerF(phoneme, 1.02f);
+        _chorusTone3 = new PhonemeOscillerF(phoneme, 1.1f);
+        _chorusTone4 = new PhonemeOscillerF(phoneme, 1.04f);
+        _chorusTone5 = new PhonemeOscillerF(phoneme, 1.01f);
+        _chorusTone6 = new PhonemeOscillerF(phoneme, 1.025f);
+        _chorusTone7 = new PhonemeOscillerF(phoneme, 1.035f);
+        _chorusTone8 = new PhonemeOscillerF(phoneme, 1.05f);
         _vibrato1 = new OscillerF(SIN_TABLE_F);
         _chorusVibrato1 = new OscillerF(SIN_TABLE_F, 0.00312, 1.000, [0.4, -0.3, 0.2, 0.1, 0.05, 0.02, 0.01, -0.01]);
         _chorusVibrato2 = new OscillerF(SIN_TABLE_F, 0.00323, 1.002, [0.2,-0.2, 0.2,-0.1, 0.3, 0.02, 0.01, -0.01]);
@@ -1114,6 +584,17 @@ class SineHarmonicFormants : InstrumentBaseF {
         _chorusVibrato8 = new OscillerF(SIN_TABLE_F, 0.00323, 0.998, [0.21, 0.2, 0.2, 0.05, 0.02, 0.02, 0.01, -0.01]);
     }
 
+    void setPhoneme(PhonemeType phoneme) {
+        _tone1.setPhoneme(phoneme);
+        _chorusTone1.setPhoneme(phoneme, 1.1f);
+        _chorusTone2.setPhoneme(phoneme, 1.2f);
+        _chorusTone3.setPhoneme(phoneme, 1.3f);
+        _chorusTone4.setPhoneme(phoneme, 1.4f);
+        _chorusTone5.setPhoneme(phoneme, 1.1f);
+        _chorusTone6.setPhoneme(phoneme, 1.25f);
+        _chorusTone7.setPhoneme(phoneme, 1.35f);
+        _chorusTone8.setPhoneme(phoneme, 1.05f);
+    }
 
     void resetPhase() {
         _tone1.resetPhase();
@@ -1129,7 +610,15 @@ class SineHarmonicFormants : InstrumentBaseF {
 
     override protected void onFormatChanged() {
         resetPhase();
-        _formantFilter.init(samplesPerSecond);
+        _tone1.setSampleRate(samplesPerSecond);
+        _chorusTone1.setSampleRate(samplesPerSecond);
+        _chorusTone2.setSampleRate(samplesPerSecond);
+        _chorusTone3.setSampleRate(samplesPerSecond);
+        _chorusTone4.setSampleRate(samplesPerSecond);
+        _chorusTone5.setSampleRate(samplesPerSecond);
+        _chorusTone6.setSampleRate(samplesPerSecond);
+        _chorusTone7.setSampleRate(samplesPerSecond);
+        _chorusTone8.setSampleRate(samplesPerSecond);
     }
 
     override bool loadData(int frameCount, ubyte * buf, ref uint flags) {
@@ -1177,6 +666,8 @@ class SineHarmonicFormants : InstrumentBaseF {
                 step = cast(int)(step * vibrato);
             }
 
+            float noiseGain = _noise.next;
+
             if (hasChorus) {
                 float chorus = _chorus.next;
                 float chorusGain = gain * chorus * 7 / 10;
@@ -1197,35 +688,35 @@ class SineHarmonicFormants : InstrumentBaseF {
                 int step6 = cast(int)(chorus6 * step);
                 int step7 = cast(int)(chorus7 * step);
                 int step8 = cast(int)(chorus8 * step);
-                chorus1 = _chorusTone1.step(step1);
-                chorus2 = _chorusTone2.step(step2);
-                chorus3 = _chorusTone3.step(step3);
-                chorus4 = _chorusTone4.step(step4);
-                chorus5 = _chorusTone5.step(step5);
-                chorus6 = _chorusTone6.step(step6);
-                chorus7 = _chorusTone7.step(step7);
-                chorus8 = _chorusTone8.step(step8);
+                chorus1 = _chorusTone1.step(step1, noiseGain);
+                chorus2 = _chorusTone2.step(step2, noiseGain);
+                chorus3 = _chorusTone3.step(step3, noiseGain);
+                chorus4 = _chorusTone4.step(step4, noiseGain);
+                chorus5 = _chorusTone5.step(step5, noiseGain);
+                chorus6 = _chorusTone6.step(step6, noiseGain);
+                chorus7 = _chorusTone7.step(step7, noiseGain);
+                chorus8 = _chorusTone8.step(step8, noiseGain);
                 chorusSample1 = (
                                  -chorus1
                                  + chorus2
-                                 + chorus5/3
-                                 + chorus6/4
-                                 - chorus7/4
-                                 - chorus8/3
+                                 + chorus5/2
+                                 + chorus6/3
+                                 - chorus7/3
+                                 - chorus8/2
                                  + chorus3
-                                 + chorus4) / 6;
+                                 + chorus4);
                 chorusSample2 = (
                                  chorus5
                                  + chorus6
-                                 - chorus1/3
-                                 + chorus2/4
-                                 - chorus3/4
-                                 - chorus4/3
+                                 - chorus1/2
+                                 + chorus2/3
+                                 - chorus3/3
+                                 - chorus4/2
                                  + chorus7
-                                 + chorus8) / 6;
+                                 + chorus8);
             }
 
-            float sample = _tone1.step(step);
+            float sample = _tone1.step(step, noiseGain);
             float sample1 = (sample + chorusSample1);
             float sample2 = (sample + chorusSample2);
             if (!_distortion.isZero) {
@@ -1255,11 +746,10 @@ class SineHarmonicFormants : InstrumentBaseF {
     /// returns list of supported controllers
     override immutable(Controller)[] getControllers() {
         Controller[] res;
-        //res ~= Controller("chorus", "Chorus", 0, 1000, 300);
-        //res ~= Controller("reverb", "Reverb", 0, 1000, 300);
         res ~= Controller(ControllerId.VibratoAmount, "Vibrato Amount", 0, 1000, 300);
         res ~= Controller(ControllerId.VibratoFreq, "Vibrato Freq", 0, 1000, 500);
         res ~= Controller(ControllerId.Chorus, "Chorus", 0, 1000, 0);
+        //res ~= Controller(ControllerId.Noise, "Noise", 0, 1000, 0);
         res ~= Controller(ControllerId.Distortion, "Distortion", 0, 1000, 0);
         return cast(immutable(Controller)[])res;
     }
@@ -1468,20 +958,18 @@ Instrument[] getInstrumentList() {
         _instrumentList ~= new SineHarmonicWaveTable("strings", "Strings", [0.7, -0.6, 0.5, -0.4, 0.3, -0.2]);
         _instrumentList ~= new SineHarmonicWaveTable("strings2", "Strings 2", [0.5, -0.4, 0.3, -0.3, 0.25, -0.3, 0.15, -0.15, 0.1, -0.05, 0.04, -0.03, 0.02, -0.01]);
         _instrumentList ~= new SineHarmonicWaveTable("brass", "Brass", [0.1, -0.3, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 0.4, -0.35, 0.2, -0.1, 0.05, -0.02]);
-        _instrumentList ~= new SineHarmonicFormants("voiceAh", "Voice Ah", 
-                                                    //[0.9f, -0.85f, +0.8f, -0.75f, +0.7f, -0.65f, 0.6f, -0.55f, 0.5f, -0.45f, 0.4f, -0.4f, 0.35f, -0.30f, 0.25f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f, 0.20f, -0.20f],
-                                                    //[0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f, 0.9f, -0.9f],
-                                                    [0.8f, -0.6f, +0.4f, -0.3f, +0.25f, -0.2f, 0.15f, -0.12f, 0.10f, -0.08f, 0.07f, -0.06f, 0.05f, -0.04f, 0.03f, -0.02f],
-                                                    0.1f,
-                                                    [FormantInfo(740, 1.0f, 1.4f), FormantInfo(1180, 0.9f, 1.4f), FormantInfo(2640, 0.3f, 1.4f)]
-                                                    //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
-                                                    );
-        _instrumentList ~= new SineHarmonicFormants("voiceAh2", "Voice Ah2", [0.05f, -0.1f, 0.18f, -0.25f, 0.28f, -0.65f, 0.55f, -0.22f, 0.23f, -0.45f, 0.25f, -0.18f, 0.15f, -0.10f, 0.09f, -0.08f, 0.07f, -0.07f, 0.08f, -0.09f, 0.10f, -0.15f, 0.20f, -0.18f, 0.10f, -0.08f, 0.06f, -0.05f],
-                                                    1,
-                                                    //[FormantInfo(700, 1.0f, 1.7f), FormantInfo(1100, 0.8f, 1.8f), FormantInfo(2600, 0.4f, 1.9f)]
-                                                    //[FormantInfo(740, 1.0f, 1.4f), FormantInfo(1180, 0.9f, 1.4f), FormantInfo(2640, 0.3f, 1.4f)]
-                                                    null
-                                                    );
+        _instrumentList ~= new PhonemeSynth("voiceAaa", "Voice Aaa", PhonemeType.aaa);
+        _instrumentList ~= new PhonemeSynth("voiceIhh", "Voice Ihh", PhonemeType.ihh);
+        _instrumentList ~= new PhonemeSynth("voiceEhh", "Voice Ehh", PhonemeType.ehh);
+        _instrumentList ~= new PhonemeSynth("voiceEee", "Voice Eee", PhonemeType.eee);
+        _instrumentList ~= new PhonemeSynth("voiceAhh", "Voice Ahh", PhonemeType.ahh);
+        _instrumentList ~= new PhonemeSynth("voiceAww", "Voice Aww", PhonemeType.aww);
+        _instrumentList ~= new PhonemeSynth("voiceOhh", "Voice Ohh", PhonemeType.ohh);
+        _instrumentList ~= new PhonemeSynth("voiceUhh", "Voice Uhh", PhonemeType.uhh);
+        _instrumentList ~= new PhonemeSynth("voiceUuu", "Voice Uuu", PhonemeType.uuu);
+        _instrumentList ~= new PhonemeSynth("voiceOoo", "Voice Ooo", PhonemeType.ooo);
+        _instrumentList ~= new PhonemeSynth("voiceRrr", "Voice Rrr", PhonemeType.rrr);
+        _instrumentList ~= new PhonemeSynth("voiceLll", "Voice Lll", PhonemeType.lll);
         _instrumentList ~= new MyAudioSource();
     }
     return _instrumentList;

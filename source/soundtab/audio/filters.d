@@ -1,7 +1,9 @@
 /**
     Filters.
 
-    Based on code from STK library - https://github.com/thestk/stk
+    Based on code from STK library
+         https://github.com/thestk/stk
+         https://ccrma.stanford.edu/software/stk/
 */
 module soundtab.audio.filters;
 
@@ -109,6 +111,10 @@ class Formant  : FilterBase {
         _gain = gain;
         setResonance(frequency, radius);
     }
+    override void setSampleRate(int samplesPerSecond) {
+        super.setSampleRate(samplesPerSecond);
+        setResonance(_frequency, _radius);
+    }
     void setResonance(float frequency, float radius) {
         _radius = radius;
         _frequency = frequency;
@@ -135,7 +141,6 @@ class Formant  : FilterBase {
         _outputs = [0,0,0,0];
         _lastFrame = 0;
     }
-    int _sampleRate = 44100;
     float _frequency = 400;
     float _radius = 0;
     float _gain = 1.0f;
@@ -146,23 +151,20 @@ class Formant  : FilterBase {
     float _lastFrame = 0;
 }
 
-class PhonemeFormants : Filter {
-    OneZero _onezero;
-    OnePole _onepole;
+class PhonemeFormantsFilter : Filter {
     Formant[4] _formants;
-    this() {
-        _onezero = new OneZero();
-        _onepole = new OnePole();
-        _onezero.setZero( -0.9 );
-        _onepole.setPole( 0.9 );
+    float _formantFreqMult;
+    this(PhonemeType phoneme = PhonemeType.ahh, float formantFreqMult = 1) {
+        _formantFreqMult = formantFreqMult;
         for(int i = 0; i < 4; i++)
             _formants[i] = new Formant();
-        setPhoneme(PhonemeType.ahh);
+        setPhoneme(phoneme, formantFreqMult);
     }
 
-    void setPhoneme(PhonemeType type) {
+    void setPhoneme(PhonemeType type, float formantFreqMult = 1) {
+        _formantFreqMult = formantFreqMult;
         for (int i = 0; i < 4; i ++) {
-            _formants[i].setParams(phonemes[type][i].frequency, phonemes[type][i].radius, dbToLinear(phonemes[type][i].gainDb));
+            _formants[i].setParams(_formantFreqMult * phonemes[type][i].frequency, phonemes[type][i].radius, dbToLinear(phonemes[type][i].gainDb));
         }
     }
 
@@ -172,17 +174,16 @@ class PhonemeFormants : Filter {
     }
 
     float tick(float input) {
-        float temp = _onepole.tick( _onezero.tick( input ) );
-        _lastFrame = _formants[0].tick(input);
-        _lastFrame += _formants[1].tick(input);
-        _lastFrame += _formants[2].tick(input);
-        _lastFrame += _formants[3].tick(input);
+        float temp = input;
+
+        _lastFrame = _formants[0].tick(temp);
+        _lastFrame += _formants[1].tick(temp);
+        _lastFrame += _formants[2].tick(temp);
+        _lastFrame += _formants[3].tick(temp);
         return _lastFrame;
     }
     // clear state
     void clear() {
-        _onepole.clear();
-        _onezero.clear();
         for(int i = 0; i < 4; i++)
             _formants[i].clear();
     }
@@ -222,35 +223,35 @@ PhonemeParams[12] phonemes = [
         FormantParams(2754, 0.979, -12),
         FormantParams(3270, 0.440, -17)
     ],
-    [ 
+    [
         //// PhonemeType.ihh (bit)
         FormantParams(385, 0.987,  10),
         FormantParams(2056, 0.930, -20),
         FormantParams(2587, 0.890, -20),
         FormantParams(3150, 0.400, -20)
     ],
-    [ 
+    [
         //// PhonemeType.ehh (bet)
         FormantParams(515, 0.977,  10),
         FormantParams(1805, 0.810, -10),
         FormantParams(2526, 0.875, -10),
         FormantParams(3103, 0.400, -13)
     ],
-    [ 
+    [
         //// PhonemeType.aaa (bat)
         FormantParams(773, 0.950,  10),
         FormantParams(1676, 0.830,  -6),
         FormantParams(2380, 0.880, -20),
         FormantParams(3027, 0.600, -20)
     ],
-    [ 
+    [
         //// PhonemeType.ahh (father)
         FormantParams(770, 0.950,   0),
         FormantParams(1153, 0.970,  -9),
         FormantParams(2450, 0.780, -29),
         FormantParams(3140, 0.800, -39)
     ],
-    [ 
+    [
         //// PhonemeType.aww (bought)
         FormantParams(637, 0.910,   0),
         FormantParams(895, 0.900,  -3),
@@ -264,35 +265,35 @@ PhonemeParams[12] phonemes = [
         FormantParams(2556, 0.950, -17),
         FormantParams(3070, 0.910, -20)
     ],
-    [ 
+    [
         //// PhonemeType.uhh (but)
         FormantParams(561, 0.965,   0),
         FormantParams(1084, 0.930, -10),
         FormantParams(2541, 0.930, -15),
         FormantParams(3345, 0.900, -20)
     ],
-    [ 
+    [
         //// PhonemeType.uuu (foot)
         FormantParams(515, 0.976,   0),
         FormantParams(1031, 0.950,  -3),
         FormantParams(2572, 0.960, -11),
         FormantParams(3345, 0.960, -20)
     ],
-    [ 
+    [
         //// PhonemeType.ooo (boot)
         FormantParams(349, 0.986, -10),
         FormantParams(918, 0.940, -20),
         FormantParams(2350, 0.960, -27),
         FormantParams(2731, 0.950, -33)
     ],
-    [ 
+    [
         //// PhonemeType.rrr (bird)
         FormantParams(394, 0.959, -10),
         FormantParams(1297, 0.780, -16),
         FormantParams(1441, 0.980, -16),
         FormantParams(2754, 0.950, -40)
     ],
-    [ 
+    [
         //// PhonemeType.lll (lull)
         FormantParams(462, 0.990,  +5),
         FormantParams(1200, 0.640, -10),
