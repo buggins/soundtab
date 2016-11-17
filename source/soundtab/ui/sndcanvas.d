@@ -9,6 +9,12 @@ import dlangui.core.events;
 
 class SoundCanvas : Widget {
 
+    uint _darkNoteColor = 0x403020;
+    uint _whiteNoteColor = 0x605040;
+    uint _spaceColor = 0x201008;
+    uint _noteNameColor = 0x808080;
+    uint _pitchMarkColor = 0xFF0000;
+
     double _minPitch = 440.0 / 8;
     double _maxPitch = 440.0 * 8;
     double _minNote;
@@ -141,25 +147,25 @@ class SoundCanvas : Widget {
             Rect noteRect = getNoteRect(rc, n);
             //noteRect.left ++;
             bool black = isBlackNote(n);
-            uint cl = black ? 0xC0C0C0 : 0xE0E0E0;
+            uint cl = black ? _darkNoteColor : _whiteNoteColor;
             buf.fillRect(noteRect, cl);
             if (!black) {
                 dstring noteName = getNoteName(n);
                 Point sz = fnt.textSize(noteName);
-                fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2, noteName, 0xA0A0A0);
+                fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2, noteName, _noteNameColor);
                 dstring octaveName = getNoteOctaveName(n);
                 sz = fnt.textSize(octaveName);
-                fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2 + fsize, octaveName, 0x80A0A0A0);
+                fnt.drawText(buf, noteRect.middlex - sz.x / 2, noteRect.top + fsize/2 + fsize, octaveName, _noteNameColor);
             }
             noteRect.right = noteRect.left + 1;
-            buf.fillRect(noteRect, black ? 0xD0D0D0 : 0xD0D0D0);
+            buf.fillRect(noteRect, _spaceColor); //black ? _darkNoteColor : _whiteNoteColor);
         }
         double currentNote = toLogScale(_currentPitch);
         if (currentNote >= _minNote && currentNote <= _maxNote) {
             int x = getPitchX(rc, currentNote);
             int y = cast(int)(rc.top + (rc.height * _currentY));
-            buf.fillRect(Rect(x, rc.top, x+1, rc.bottom), 0xFF0000);
-            buf.fillRect(Rect(x - pixelsPerNote / 2, y, x + pixelsPerNote / 2, y + 1), 0xFF0000);
+            buf.fillRect(Rect(x, rc.top, x+1, rc.bottom), _pitchMarkColor);
+            buf.fillRect(Rect(x - pixelsPerNote / 2, y, x + pixelsPerNote / 2, y + 1), _pitchMarkColor);
         }
     }
 

@@ -168,7 +168,7 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
-        backgroundColor = 0xE0E8F0;
+        //backgroundColor = 0xE0E8F0;
 
         _controlsLayout = new VerticalLayout();
         _controlsLayout.layoutWidth = FILL_PARENT;

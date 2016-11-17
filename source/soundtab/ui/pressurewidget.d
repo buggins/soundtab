@@ -8,6 +8,10 @@ class PressureWidget : Widget {
     double _currentPressure = 0;
     bool _currentProximity = false;
 
+    uint _inactiveFrameColor = 0x808080;
+    uint _activeFrameColor = 0x00C000;
+    uint _gaugeColor = 0x00C000;
+
     this() {
         super("pressure");
         margins = Rect(5,5,5,5).pointsToPixels;
@@ -46,12 +50,13 @@ class PressureWidget : Widget {
 
         rc.top = rc.middley + 2;
 
-        buf.drawFrame(rc, _currentProximity ? (_currentPressure > 0 ? 0x40C040 : 0x40FF40) : 0x808080, Rect(1,1,1,1), 0xFFFFFF);
+        buf.drawFrame(rc, _currentProximity ? (_currentPressure > 0 ? _activeFrameColor : _activeFrameColor) : _inactiveFrameColor, Rect(1,1,1,1), 
+                      0xE0202020);
         rc.shrink(2, 2);
 
         if (_currentProximity && _currentPressure > 0) {
             int x = cast(int)(rc.left + _currentPressure * rc.width);
-            buf.fillRect(Rect(rc.left, rc.top, x, rc.bottom), 0x008000);
+            buf.fillRect(Rect(rc.left, rc.top, x, rc.bottom), _gaugeColor);
         }
 
     }

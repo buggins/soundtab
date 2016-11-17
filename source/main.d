@@ -44,6 +44,7 @@ extern (C) int UIAppMain(string[] args) {
         convertRaw("impuls20.raw");
     }
 
+    Platform.instance.uiTheme = "theme_dark";
     // create window
     Log.d("Creating window");
     import dlangui.platforms.windows.winapp;
