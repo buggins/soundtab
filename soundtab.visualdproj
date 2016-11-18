@@ -410,6 +410,17 @@
  </Config>
  <Folder name="soundtab">
   <Folder name="source">
+   <Folder name="stk">
+    <File path="source\stk\adsr.d" />
+    <File path="source\stk\fileloop.d" />
+    <File path="source\stk\filter.d" />
+    <File path="source\stk\fm.d" />
+    <File path="source\stk\generator.d" />
+    <File path="source\stk\instrument.d" />
+    <File path="source\stk\sinewave.d" />
+    <File path="source\stk\stk.d" />
+    <File path="source\stk\twozero.d" />
+   </Folder>
    <Folder name="soundtab">
     <Folder name="audio">
      <File path="source\soundtab\audio\audiosource.d" />
