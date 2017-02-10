@@ -88,6 +88,8 @@ extern (C) int UIAppMain(string[] args) {
     else
         Log.d("Error loading sound file");
     */
+    // embed resources listed in views/resources.list into executable
+    embeddedResourceList.addResources(embedResourcesFromList!("resources.list")());
 
     Platform.instance.uiTheme = "theme_dark";
     // create window
