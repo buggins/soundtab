@@ -18,6 +18,9 @@ import derelict.wintab.tablet;
 import soundtab.ui.synthwidget;
 import soundtab.audio.playback;
 
+// uncomment to enable wacom tablet support
+//version = EnableWacom;
+
 class SoundFrame : AppFrame {
     import dlangui.platforms.windows.winapp;
 
@@ -30,7 +33,8 @@ class SoundFrame : AppFrame {
     this(Win32Window window) {
         _tablet = new Tablet();
         window.onUnknownWindowMessage = &_tablet.onUnknownWindowMessage;
-        _tablet.init(window.windowHandle);
+        version(EnableWacom)
+            _tablet.init(window.windowHandle);
         super();
         applySettings(_settings);
         window.mainWidget = this;
@@ -137,6 +141,11 @@ class SoundFrame : AppFrame {
         playItem.add(ACTION_FILE_PLAY_PAUSE_ACCOMPANIMENT);
         mainMenuItems.add(playItem);
 
+        MenuItem instrItem = new MenuItem(new Action(3, "Instrument"d));
+        instrItem.add(ACTION_INSTRUMENT_EDITOR);
+        mainMenuItems.add(instrItem);
+        
+
         MainMenu mainMenu = new MainMenu(mainMenuItems);
         return mainMenu;
     }
@@ -163,6 +172,13 @@ class SoundFrame : AppFrame {
         dlg.show();
     }
 
+
+    void openInstrumentEditor() {
+        import soundtab.ui.instredit;
+        InstrumentEditorDialog dlg = new InstrumentEditorDialog(UIString("SoundTab Instrument Editor"d), this.window, DialogFlag.Modal | DialogFlag.Resizable, 800, 600);
+        dlg.show();
+    }
+
     /// override to handle specific actions
     override bool handleAction(const Action a) {
         if (a) {
@@ -179,6 +195,9 @@ class SoundFrame : AppFrame {
                     return true;
                 case Actions.FilePlayPauseAccompaniment:
                     _synth.playPauseAccomp();
+                    return true;
+                case Actions.InstrumentEditor:
+                    openInstrumentEditor();
                     return true;
                 default:
                     break;

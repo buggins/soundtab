@@ -45,9 +45,14 @@ class Tablet {
 
         _hWnd = hWnd;
 
-        if (!WTInfo(0, 0, null)) {
-            Log.e("WinTab services not available");
-            //return 1;
+        try {
+            if (!WTInfo(0, 0, null)) {
+                Log.e("WinTab services not available");
+                //return 1;
+                return false;
+            }
+        } catch (Exception e) {
+            Log.e("Exception in WTInfo", e);
             return false;
         }
 

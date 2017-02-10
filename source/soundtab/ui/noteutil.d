@@ -8,6 +8,7 @@ module soundtab.ui.noteutil;
 
 import std.string : format;
 import std.math : exp, log, exp2, log2, floor;
+import dlangui.core.logger;
 
 immutable double HALF_TONE = 1.05946309435929530980;
 immutable double QUARTER_TONE = 1.02930223664349207440;
@@ -163,4 +164,47 @@ struct PitchCorrector {
     double correctPitch(double pitch) {
         return fromLogScale(correctNote(toLogScale(pitch)));
     }
+}
+
+void buildNoteConversionTable() {
+    char[] buf;
+    buf.assumeSafeAppend;
+
+    double baseFreq = fromLogScale(0);
+    buf ~= "\nstatic const float SEMITONE_FRAC[256] = {\n";
+    for (int i = 0; i < 256; i++) {
+        if ((i % 8) == 0)
+            buf ~= "    ";
+        double n = i / 256.0;
+        double freq = fromLogScale(n);
+        double frac = freq / baseFreq;
+        buf ~= "%.7ff,".format(frac);
+        if ((i % 8) == 7)
+            buf ~= "\n";
+        else
+            buf ~= " ";
+    }
+    buf ~= "};\n";
+    buf ~= "\nstatic const float NOTE_FREQ[120] = {\n";
+    for (int i = 0; i < 120; i++) {
+        if ((i % 6) == 0)
+            buf ~= "    ";
+        double n = i - 57 - 3;
+        double freq = fromLogScale(n);
+        buf ~= "%.7ff,".format(freq);
+        if ((i % 6) == 5) {
+            if (i % 12 == 5) {
+                buf ~= " // C%d..F%d".format(i / 12, i / 12);
+            }
+            if (i % 12 == 11) {
+                buf ~= " // F#%d..B%d".format(i / 12, i / 12);
+            }
+            buf ~= "\n";
+        } else
+            buf ~= " ";
+    }
+    buf ~= "};\n";
+
+
+    Log.d(buf);
 }

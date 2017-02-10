@@ -1,33 +1,9 @@
 module soundtab.audio.mp3player;
 
 import soundtab.audio.audiosource;
+public import soundtab.audio.loader;
 import dlangui.core.logger;
 import derelict.mpg123;
-
-private __gshared bool mpg123Loaded;
-private __gshared bool mpg123Error;
-
-private bool loadMPG123() {
-    if (mpg123Loaded)
-        return true;
-    if (mpg123Error)
-        return false;
-    try {
-        DerelictMPG123.load();
-        Log.i("libmpg123 shared library is loaded ok");
-        mpg123Loaded = true;
-        mpg123_init();
-    } catch (Exception e) {
-        Log.e("Cannot load libmpg123 shared library", e);
-        mpg123Error = true;
-    }
-    return mpg123Loaded;
-}
-
-void uninitMP3Decoder() {
-    if (mpg123Loaded)
-        mpg123_exit();
-}
 
 struct PlayPosition {
     /// current playback position, seconds
@@ -55,13 +31,11 @@ struct PlayPosition {
 class Mp3Player : AudioSource {
     private string _filename;
     private bool _loaded;
-    private int _sourceChannels = 2;
-    private int _sourceEncoding;
-    private int _sourceRate;
-    private short[] _sourceData;
     private int _sourcePosition;
     private int _sourceFrames;
     private bool _paused = true;
+
+    private WaveFile _file;
 
     @property bool paused() { return _paused; }
     @property Mp3Player paused(bool pauseFlag) {
@@ -87,7 +61,7 @@ class Mp3Player : AudioSource {
         scope(exit)unlock();
         if (!_loaded)
             return PlayPosition(0, 0);
-        return PlayPosition(_sourcePosition / cast(float)_sourceRate, _sourceFrames / cast(float)_sourceRate);
+        return PlayPosition(_sourcePosition / cast(float)_file.sampleRate, _file.frames / cast(float)_file.sampleRate);
     }
 
     /// set current play position (seconds)
@@ -96,7 +70,7 @@ class Mp3Player : AudioSource {
         scope(exit)unlock();
         if (!_loaded)
             return;
-        int newPosition = cast(int)(positionSeconds * _sourceRate);
+        int newPosition = cast(int)(positionSeconds * _file.sampleRate);
         if (newPosition < 0)
             newPosition = 0;
         if (newPosition > _sourceFrames)
@@ -136,58 +110,24 @@ class Mp3Player : AudioSource {
                 return true;
             }
             _filename = null;
-            _sourceData = null;
-            _sourceFrames = 0;
-        }
-        if (!loadMPG123()) {
-            Log.e("No MPG123 library found - cannot decode MP3");
-            return false;
-        }
-        int error = 0;
-        mpg123_handle * mh = mpg123_new(null, &error);
-        int res = mpg123_open(mh, filename.toStringz);
-        if (res == MPG123_OK) {
-            res =  mpg123_getformat(mh, &_sourceRate, &_sourceChannels, &_sourceEncoding);
-            if (res == MPG123_OK) {
-                Log.d("mp3 file rate=", _sourceRate, " channels=", _sourceChannels, " enc=", _sourceEncoding);
-                int bufferSize = cast(int)mpg123_outblock(mh);
-                Log.d("buffer size=", bufferSize);
-                bufferSize *= 4;
-                ubyte[] buffer = new ubyte[bufferSize];
-                short[] outbuffer;
-                short * pbuf = cast(short*)buffer.ptr;
-                outbuffer.assumeSafeAppend;
-                size_t done = 0;
-                size_t bytesRead = 0;
-                for (;;) {
-                    res = mpg123_read(mh, buffer.ptr, bufferSize, &done);
-                    if (res != MPG123_OK) {
-                        Log.d("Error while decoding: ", res);
-                        break;
-                    }
-                    bytesRead += bufferSize;
-                    if (!done) {
-                        break;
-                    }
-                    outbuffer ~= pbuf[0 .. done/2];
-                }
-                Log.d("Bytes decoded: ", bytesRead, " outBufferLength=", outbuffer.length);
-                if (_sourceChannels >= 1 && outbuffer.length > 0) {
-                    lock();
-                    scope(exit)unlock();
-                    _sourceData = outbuffer;
-                    _loaded = true;
-                    _filename = filename;
-                    _sourcePosition = 0;
-                    _sourceFrames = cast(int)(_sourceData.length / _sourceChannels);
-                }
+            if (_file) {
+                destroy(_file);
+                _file = null;
             }
-
-            mpg123_close(mh);
         }
-
-        mpg123_delete(mh);
-
+        WaveFile f = loadSoundFile(filename, false);
+        if (f) {
+            lock();
+            scope(exit)unlock();
+            _file = f;
+            _loaded = true;
+            _filename = filename;
+            _sourcePosition = 0;
+            _sourceFrames = _file.frames;
+            Log.e("File is loaded");
+        } else {
+            Log.e("Load error");
+        }
         return _loaded;
     }
 
@@ -203,17 +143,17 @@ class Mp3Player : AudioSource {
             return true;
         }
         int i = 0;
-        int srcpos = _sourcePosition * _sourceChannels;
-        if (_sourceRate != samplesPerSecond) {
+        int srcpos = _sourcePosition * _file.channels;
+        if (_file.sampleRate != samplesPerSecond) {
             // need resampling
             // simple get-nearest-frame resampler
-            int srcFrames = cast(int)(cast(long)frameCount * _sourceRate / samplesPerSecond);
-            //Log.d("Resampling ", srcFrames, " -> ", frameCount, " (", _sourceRate, "->", samplesPerSecond, ")");
+            int srcFrames = cast(int)(cast(long)frameCount * _file.sampleRate / samplesPerSecond);
+            //Log.d("Resampling ", srcFrames, " -> ", frameCount, " (", _file.sampleRate, "->", samplesPerSecond, ")");
             for (; i < frameCount; i++) {
-                int index = (i * srcFrames / frameCount + _sourcePosition) * _sourceChannels;
-                if (index + _sourceChannels - 1 < _sourceData.length) {
-                    float sample1 = _sourceData.ptr[index] / 32768.0f;
-                    float sample2 = _sourceChannels > 1 ? _sourceData.ptr[index + 1] / 32768.0f : sample1;
+                int index = (i * srcFrames / frameCount + _sourcePosition) * _file.channels;
+                if (index + _file.channels - 1 < _file.data.length) {
+                    float sample1 = _file.data.ptr[index];
+                    float sample2 = _file.channels > 1 ? _file.data.ptr[index + 1] : sample1;
                     if (!_unityVolume) {
                         sample1 *= _volume;
                         sample2 *= _volume;
@@ -230,8 +170,8 @@ class Mp3Player : AudioSource {
         } else {
             // no resampling
             for (; i < frameCount; i++) {
-                float sample1 = _sourceData.ptr[srcpos++] / 32768.0f;
-                float sample2 = _sourceChannels > 1 ? _sourceData.ptr[srcpos++] / 32768.0f : sample1;
+                float sample1 = _file.data.ptr[srcpos++];
+                float sample2 = _file.channels > 1 ? _file.data.ptr[srcpos++] : sample1;
                 putSamples(buf, sample1, sample2);
                 _sourcePosition++;
                 if (_sourcePosition >= _sourceFrames)
