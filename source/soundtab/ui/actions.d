@@ -13,6 +13,11 @@ enum Actions : int {
     ViewHZoomOut,
     ViewHZoom1,
     ViewHZoomMax,
+    ViewHZoomSel,
+    ViewVZoomIn,
+    ViewVZoomOut,
+    ViewVZoom1,
+    ViewVZoomMax,
 }
 
 const Action ACTION_FILE_OPTIONS = new Action(Actions.FileOptions, "Options..."d);
@@ -24,4 +29,9 @@ const Action ACTION_INSTRUMENT_OPEN_SOUND_FILE = new Action(Actions.InstrumentOp
 const Action ACTION_VIEW_HZOOM_IN = new Action(Actions.ViewHZoomIn, "H Zoom In"d, "hzoomin", KeyCode.ADD, 0);
 const Action ACTION_VIEW_HZOOM_OUT = new Action(Actions.ViewHZoomOut, "H Zoom Out"d, "hzoomout", KeyCode.SUB, 0);
 const Action ACTION_VIEW_HZOOM_1 = new Action(Actions.ViewHZoom1, "H Zoom 1:1"d, "hzoom1", KeyCode.ADD, KeyFlag.Control);
-const Action ACTION_VIEW_HZOOM_MAX = new Action(Actions.ViewHZoomMax, "H Zoom Max"d, "hzoommax", KeyCode.SUB, KeyFlag.Control);
+const Action ACTION_VIEW_HZOOM_MAX = new Action(Actions.ViewHZoomMax, "H Zoom Full View"d, "hzoommax", KeyCode.SUB, KeyFlag.Control);
+const Action ACTION_VIEW_HZOOM_SEL = new Action(Actions.ViewHZoomSel, "H Zoom Selection"d, "hzoomsel", KeyCode.RETURN);
+const Action ACTION_VIEW_VZOOM_IN = new Action(Actions.ViewVZoomIn, "V Zoom In"d, "vzoomin", KeyCode.PAGEUP, 0);
+const Action ACTION_VIEW_VZOOM_OUT = new Action(Actions.ViewVZoomOut, "V Zoom Out"d, "vzoomout", KeyCode.PAGEDOWN, 0);
+const Action ACTION_VIEW_VZOOM_1 = new Action(Actions.ViewVZoom1, "V Zoom 1:1"d, "vzoom1", KeyCode.PAGEUP, KeyFlag.Control);
+const Action ACTION_VIEW_VZOOM_MAX = new Action(Actions.ViewVZoomMax, "V Zoom Max"d, "vzoommax", KeyCode.PAGEDOWN, KeyFlag.Control);

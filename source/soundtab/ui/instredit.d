@@ -32,6 +32,11 @@ class HRuler : Widget {
 struct MinMax {
     float minvalue = 0;
     float maxvalue = 0;
+    @property float amplitude() {
+        float n1 = minvalue < 0 ? -minvalue : minvalue;
+        float n2 = maxvalue < 0 ? -maxvalue : maxvalue;
+        return n1 > n2 ? n1 : n2;
+    }
 }
 
 class WaveFileWidget : WidgetGroupDefaultDrawing {
@@ -42,6 +47,11 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     protected int _hscale = 1;
     protected float _vscale = 1;
     protected int _scrollPos = 0;
+    protected int _cursorPos = 0;
+    protected int _selStart = 0;
+    protected int _selEnd = 0;
+    protected MinMax[] _zoomCache;
+    protected int _zoomCacheScale;
     this() {
         _hruler = new HRuler();
         _hScroll = new ScrollBar("wavehscroll", Orientation.Horizontal);
@@ -50,12 +60,28 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         addChild(_hScroll);
         _hScroll.scrollEvent = &onScrollEvent;
         focusable = true;
+        clickable = true;
+        acceleratorMap.add([
+            ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
+            ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX]);
     }
     @property WaveFile file() { return _file; }
     @property void file(WaveFile f) { 
         _file = f;
-        //zoomFull();
+        zoomFull();
     }
+
+    void updateZoomCache() {
+        if (!_file || _zoomCacheScale == _hscale || _hscale <= 16)
+            return;
+        int len = (_file.frames + _hscale - 1) / _hscale;
+        _zoomCache = new MinMax[len];
+        for (int i = 0; i < len; i++) {
+            _zoomCache[i] = getDisplayValuesNoCache(i);
+        }
+        _zoomCacheScale = _hscale;
+    }
+
     void updateView() {
         updateScrollBar();
         invalidate();
@@ -68,6 +94,45 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             _hscale = _file.frames / (_clientRect.width ? _clientRect.width : 1);
         }
         updateView();
+    }
+    MinMax visibleYRange() {
+        MinMax res;
+        for (int i = 0; i < _clientRect.width; i++) {
+            MinMax m = getDisplayValues(i);
+            if (res.minvalue > m.minvalue)
+                res.minvalue = m.minvalue;
+            if (res.maxvalue < m.maxvalue)
+                res.maxvalue = m.maxvalue;
+        }
+        return res;
+    }
+    /// process key event, return true if event is processed.
+    override bool onKeyEvent(KeyEvent event) {
+        if (event.action == KeyAction.KeyDown) {
+            switch(event.keyCode) {
+                case KeyCode.HOME:
+                    _scrollPos = 0;
+                    updateView();
+                    return true;
+                case KeyCode.END:
+                    _scrollPos = _file ? _file.frames / _hscale - _clientRect.width : 0;
+                    updateView();
+                    return true;
+                case KeyCode.RIGHT:
+                _scrollPos += _clientRect.width / 5;
+                updateView();
+                return true;
+            case KeyCode.LEFT:
+                _scrollPos -= _clientRect.width / 5;
+                updateView();
+                return true;
+            default:
+                break;
+            }
+        }
+        if (_hScroll.onKeyEvent(event))
+            return true;
+        return super.onKeyEvent(event);
     }
     /// override to handle specific actions
     override bool handleAction(const Action a) {
@@ -87,17 +152,72 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         case Actions.ViewHZoomMax:
             zoomFull();
             return true;
+        case Actions.ViewVZoomMax:
+            _vscale = 1;
+            updateView();
+            return true;
+        case Actions.ViewHZoomSel:
+            int sellen = _selEnd - _selStart;
+            if (sellen > 16) {
+                _hscale = (sellen + _clientRect.width - 1) / _clientRect.width;
+                if (_hscale < 1)
+                    _hscale = 1;
+                _scrollPos = _selStart / _hscale;
+                updateView();
+            }
+            return true;
+        case Actions.ViewVZoom1:
+            _vscale = visibleYRange().amplitude;
+            if (_vscale > 0)
+                _vscale = 1 / _vscale;
+            else
+                _vscale = 1;
+            updateView();
+            return true;
+        case Actions.ViewVZoomIn:
+            _vscale *= 1.3;
+            updateView();
+            return true;
+        case Actions.ViewVZoomOut:
+            _vscale /= 1.3;
+            updateView();
+            return true;
         default:
             break;
         }
         return super.handleAction(a);
     }
+    void limitPosition(ref int position) {
+        int maxx = _file ? _file.frames - 1 : 0;
+        if (position > maxx)
+            position = maxx;
+        if (position < 0)
+            position = 0;
+    }
     void updateScrollBar() {
+        if (!_clientRect.width)
+            return;
+        limitPosition(_cursorPos);
+        limitPosition(_selStart);
+        limitPosition(_selEnd);
         if (_hscale < 1)
             _hscale = 1;
+        if (_vscale > 5000.0f)
+            _vscale = 5000.0f;
         int maxScale = _file ? (_file.frames / (_clientRect.width ? _clientRect.width : 1)) : 1;
         if (_hscale > maxScale)
             _hscale = maxScale;
+        float amp = visibleYRange.amplitude;
+        if (amp < 0.0001)
+            amp = 0.0001f;
+        float minvscale = 1 / amp * 0.1;
+        float maxvscale = 1 / amp * 10;
+        if (minvscale > 1)
+            minvscale = 1;
+        if (_vscale < minvscale)
+            _vscale = minvscale;
+        if (_vscale > maxvscale)
+            _vscale = maxvscale;
         if (!_file) {
             _hScroll.maxValue = 0;
             _hScroll.pageSize = 1;
@@ -116,7 +236,10 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                 _hScroll.pageSize = visiblew;
                 _hScroll.requestLayout();
             }
-            _hScroll.maxValue = fullw; //fullw - visiblew;
+            if (_hScroll.maxValue != fullw) {
+                _hScroll.maxValue = fullw; //fullw - visiblew;
+                _hScroll.requestLayout();
+            }
             _hScroll.position = _scrollPos;
         }
     }
@@ -168,7 +291,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     }
 
 
-    MinMax getDisplayValues(int offset) {
+    MinMax getDisplayValuesNoCache(int offset) {
         MinMax res;
         if (!_file)
             return res;
@@ -190,6 +313,17 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         return res;
     }
 
+    MinMax getDisplayValues(int offset) {
+        if (_hscale > 16) {
+            MinMax res;
+            updateZoomCache();
+            if (offset < 0 || offset >= _zoomCache.length)
+                return res;
+            return _zoomCache.ptr[offset];
+        }
+        return getDisplayValuesNoCache(offset);
+    }
+
     bool getDisplayPos(int offset, ref int y0, ref int y1) {
         MinMax v = getDisplayValues(offset);
         int my = _clientRect.middley;
@@ -201,31 +335,92 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         return true;
     }
 
+    void setCursorPos(int x) {
+        limitPosition(x);
+        if (_cursorPos != x) {
+            _cursorPos = x;
+            invalidate();
+        }
+    }
+
+    void updateSelection(int x) {
+        limitPosition(x);
+        if (_cursorPos < x) {
+            _selStart = _cursorPos;
+            _selEnd = x;
+            invalidate();
+        } else {
+            _selStart = x;
+            _selEnd = _cursorPos;
+            invalidate();
+        }
+    }
+
+
+    void updateHScale(int newScale, int preserveX) {
+        int maxScale = _file ? (_file.frames / (_clientRect.width ? _clientRect.width : 1)) : 1;
+        if (newScale > maxScale)
+            newScale = maxScale;
+        if (newScale < 1)
+            newScale = 1;
+        int oldxpos = preserveX / _hscale - _scrollPos;
+        _hscale = newScale;
+        _scrollPos = preserveX / _hscale - oldxpos;
+        updateView();
+    }
+
+    /// process mouse event; return true if event is processed by widget.
+    override bool onMouseEvent(MouseEvent event) {
+        if (_clientRect.isPointInside(event.x, event.y)) {
+            int x = (_scrollPos + (event.x - _clientRect.left)) * _hscale;
+            if ((event.action == MouseAction.ButtonDown || event.action == MouseAction.Move) && (event.flags & MouseFlag.LButton)) {
+                setCursorPos(x);
+                return true;
+            }
+            if ((event.action == MouseAction.ButtonDown || event.action == MouseAction.Move) && (event.flags & MouseFlag.RButton)) {
+                updateSelection(x);
+                return true;
+            }
+            if (event.action == MouseAction.Wheel) {
+                if (event.flags & MouseFlag.Control) {
+                    // vertical zoom
+                    handleAction(event.wheelDelta > 0 ? ACTION_VIEW_VZOOM_IN : ACTION_VIEW_VZOOM_OUT);
+                } else {
+                    // horizontal zoom
+                    int newScale = _hscale * 2 / 3;
+                    if (event.wheelDelta < 0) {
+                        newScale = _hscale < 3 ? _hscale + 1 : _hscale * 3 / 2;
+                    }
+                    updateHScale(newScale, x);
+                }
+                return true;
+            }
+            return false;
+        }
+        return super.onMouseEvent(event);
+    }
+
     /// Draw widget at its position to buffer
     override void onDraw(DrawBuf buf) {
         if (visibility != Visibility.Visible)
             return;
         super.onDraw(buf);
-        Rect rc = _pos;
-        applyMargins(rc);
-        auto saver = ClipRectSaver(buf, rc, alpha);
-        DrawableRef bg = backgroundDrawable;
-        if (!bg.isNull) {
-            bg.drawTo(buf, rc, state);
-        }
-        applyPadding(rc);
         _needDraw = false;
+        auto saver = ClipRectSaver(buf, _clientRect, alpha);
         // erase background
         buf.fillRect(_clientRect, 0x102010);
         int my = _clientRect.middley;
         int dy = _clientRect.height / 2;
         // draw wave
         if (_file) {
+            int cursorx = _cursorPos / _hscale - _scrollPos;
+            int selstartx = _selStart / _hscale - _scrollPos;
+            int selendx = _selEnd / _hscale - _scrollPos;
             for (int i = 0; i < _clientRect.width; i++) {
                 int x = _clientRect.left + i;
                 int y0, y1;
                 if (getDisplayPos(i, y0, y1)) {
-                    buf.fillRect(Rect(x, y0, x + 1, y1), 0x40FF40);
+                    buf.fillRect(Rect(x, y0, x + 1, y1), 0x4020C020);
                     if (_hscale <= 10) {
                         int exty0 = y0;
                         int exty1 = y1;
@@ -249,6 +444,10 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                             buf.fillRect(Rect(x, y1, x + 1, exty1), 0xA040FF40);
                     }
                 }
+                if (x >= selstartx && x <= selendx)
+                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xE8FFFF00);
+                if (x == cursorx)
+                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0x40FFFFFF);
             }
         }
         // draw y==0
@@ -270,6 +469,13 @@ class InstrEditorBody : VerticalLayout {
         addChild(_wave);
         addChild(new VSpacer());
     }
+    /// map key to action
+    override Action findKeyAction(uint keyCode, uint flags) {
+        Action action = _wave.findKeyAction(keyCode, flags);
+        if (action)
+            return action;
+        return super.findKeyAction(keyCode, flags);
+    }
 }
 
 class InstrumentEditorDialog : Dialog {
@@ -282,13 +488,27 @@ class InstrumentEditorDialog : Dialog {
     ToolBarHost createToolbars() {
         ToolBarHost tbhost = new ToolBarHost();
         ToolBar tb = tbhost.getOrAddToolbar("toolbar1");
-        tb.addButtons(ACTION_INSTRUMENT_OPEN_SOUND_FILE, ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX);
+        tb.addButtons(ACTION_INSTRUMENT_OPEN_SOUND_FILE,
+                      ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
+                      ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX
+                      );
         return tbhost;
     }
 
     InstrEditorBody createBody() {
         InstrEditorBody res = new InstrEditorBody();
         return res;
+    }
+
+    /// map key to action
+    override Action findKeyAction(uint keyCode, uint flags) {
+        Action action = _toolbarHost.findKeyAction(keyCode, flags);
+        if (action)
+            return action;
+        action = _body.findKeyAction(keyCode, flags);
+        if (action)
+            return action;
+        return super.findKeyAction(keyCode, flags);
     }
 
     /// override to implement creation of dialog controls
