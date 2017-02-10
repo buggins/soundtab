@@ -207,6 +207,8 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         int maxScale = _file ? (_file.frames / (_clientRect.width ? _clientRect.width : 1)) : 1;
         if (_hscale > maxScale)
             _hscale = maxScale;
+        if (_hscale < 1)
+            _hscale = 1;
         float amp = visibleYRange.amplitude;
         if (amp < 0.0001)
             amp = 0.0001f;
@@ -445,7 +447,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                     }
                 }
                 if (x >= selstartx && x <= selendx)
-                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xE8FFFF00);
+                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xD00000FF);
                 if (x == cursorx)
                     buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0x40FFFFFF);
             }

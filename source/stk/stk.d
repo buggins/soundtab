@@ -454,7 +454,7 @@ public:
         iIndex = iIndex * nChannels_ + channel;
         output = data_[ iIndex ];
         if ( alpha > 0.0 ) {
-            uint nindex = iIndex + nChannels_;
+            uint nindex = cast(uint)(iIndex + nChannels_);
             if (nindex >= data_.length)
                 nindex -= cast(uint)data_.length;
             output += ( alpha * ( data_[ nindex ] - output ) );
