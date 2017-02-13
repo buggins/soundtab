@@ -155,6 +155,8 @@ class SynthWidget : VerticalLayout, TabletPositionHandler, TabletProximityHandle
 
     PitchCorrector _corrector;
 
+    @property Mixer mixer() { return _mixer; }
+
     this(SoundFrame frame, Tablet tablet, AudioPlayback playback) {
         super("synth");
         _frame = frame;

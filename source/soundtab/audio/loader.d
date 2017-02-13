@@ -34,6 +34,12 @@ class WaveFile {
     int sampleRate;
     int frames;
     float[] data;
+    int timeToFrame(float time) {
+        return cast(int)(time * sampleRate);
+    }
+    float frameToTime(int frame) {
+        return (cast(float)frame / sampleRate);
+    }
 }
 
 float[] shortToFloat(short[] buf, int step = 1) {

@@ -10,7 +10,9 @@ import dlangui.widgets.controls;
 import dlangui.widgets.toolbars;
 import dlangui.widgets.scrollbar;
 import soundtab.ui.actions;
+import soundtab.audio.audiosource;
 import soundtab.audio.loader;
+import soundtab.audio.mp3player;
 
 class HRuler : Widget {
     this() {
@@ -40,6 +42,7 @@ struct MinMax {
 }
 
 class WaveFileWidget : WidgetGroupDefaultDrawing {
+    protected Mp3Player _player;
     protected WaveFile _file;
     protected ScrollBar _hScroll;
     protected HRuler _hruler;
@@ -52,6 +55,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     protected int _selEnd = 0;
     protected MinMax[] _zoomCache;
     protected int _zoomCacheScale;
+    protected ulong _playTimer;
     this() {
         _hruler = new HRuler();
         _hScroll = new ScrollBar("wavehscroll", Orientation.Horizontal);
@@ -63,13 +67,16 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         clickable = true;
         acceleratorMap.add([
             ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
-            ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX]);
+            ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX,
+            ACTION_INSTRUMENT_OPEN_SOUND_FILE, ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION]);
     }
     @property WaveFile file() { return _file; }
     @property void file(WaveFile f) { 
         _file = f;
         zoomFull();
     }
+    @property Mp3Player player() { return _player; }
+    @property void player(Mp3Player v) { _player = v; }
 
     void updateZoomCache() {
         if (!_file || _zoomCacheScale == _hscale || _hscale <= 16)
@@ -182,11 +189,91 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             _vscale /= 1.3;
             updateView();
             return true;
+        case Actions.InstrumentEditorPlayPause:
+            // play/pause
+            Log.d("play/pause");
+            if (_player) {
+                if (!_playTimer)
+                    _playTimer = setTimer(50);
+                if (_player.paused) {
+                    if (_cursorPos >= _file.frames - 100)
+                        _cursorPos = 0;
+                    setPlayPosition();
+                    _player.paused = false;
+                } else {
+                    _player.paused = true;
+                    getPlayPosition();
+                }
+            }
+            return true;
+        case Actions.InstrumentEditorPlayPauseSelection:
+            // play/pause selection
+            Log.d("play/pause selection");
+            if (_player) {
+                if (!_playTimer)
+                    _playTimer = setTimer(50);
+                if (_player.paused) {
+                    if (_selEnd > _selStart || _cursorPos >= _selEnd)
+                        _cursorPos = _selStart;
+                    setPlayPosition();
+                    _player.paused = false;
+                } else {
+                    _player.paused = true;
+                    getPlayPosition();
+                }
+            }
+            return true;
+        case Actions.InstrumentOpenSoundFile:
+            // TODO:
+            return true;
         default:
             break;
         }
         return super.handleAction(a);
     }
+
+    void ensureCursorVisible() {
+        if (!_file)
+            return;
+        int p = _cursorPos / _hscale;
+        if (p < _scrollPos) {
+            _scrollPos = p;
+            updateView();
+        } else if (p > _scrollPos + _clientRect.width * 9 / 10) {
+            _scrollPos = p - _clientRect.width / 10;
+            updateView();
+        }
+    }
+
+    /// player position to screen
+    void getPlayPosition() {
+        if (!_file)
+            return;
+        PlayPosition p = _player.position;
+        int frame = _file.timeToFrame(p.currentPosition);
+        _cursorPos = frame;
+        ensureCursorVisible();
+        invalidate();
+        window.update();
+    }
+
+    /// set cursor position to player position
+    void setPlayPosition() {
+        if (!_file)
+            return;
+        _player.position = _file.frameToTime(_cursorPos);
+    }
+
+    override bool onTimer(ulong id) {
+        if (id == _playTimer) {
+            if (!_player.paused)
+                getPlayPosition();
+            return true;
+        } else {
+            return super.onTimer(id);
+        }
+    }
+
     void limitPosition(ref int position) {
         int maxx = _file ? _file.frames - 1 : 0;
         if (position > maxx)
@@ -297,8 +384,8 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         MinMax res;
         if (!_file)
             return res;
-        int p0 = cast(int)((_scrollPos + offset) * _hscale);
-        int p1 = cast(int)((_scrollPos + offset + 1) * _hscale);
+        int p0 = cast(int)((offset) * _hscale);
+        int p1 = cast(int)((offset + 1) * _hscale);
         for (int i = p0; i < p1; i++) {
             if (i >= 0 && i < _file.frames) {
                 float v = _file.data.ptr[i * _file.channels];
@@ -316,6 +403,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     }
 
     MinMax getDisplayValues(int offset) {
+        offset += _scrollPos;
         if (_hscale > 16) {
             MinMax res;
             updateZoomCache();
@@ -342,6 +430,8 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         if (_cursorPos != x) {
             _cursorPos = x;
             invalidate();
+            if (!_player.paused)
+                setPlayPosition();
         }
     }
 
@@ -460,17 +550,30 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
 
 class InstrEditorBody : VerticalLayout {
     WaveFileWidget _wave;
-    this() {
+    Mp3Player _player;
+    protected Mixer _mixer;
+    this(Mixer mixer) {
         super("instrEditBody");
+        _mixer = mixer;
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
         backgroundColor(0x102010);
         _wave = new WaveFileWidget();
+        _player = new Mp3Player();
         WaveFile wav = loadSoundFile("jmj-chronologie3.mp3", true);
         _wave.file = wav;
+        _player.setWave(wav);
+        _wave.player = _player;
+        _mixer.addSource(_player);
         addChild(_wave);
         addChild(new VSpacer());
+        //_player.paused = false;
     }
+
+    ~this() {
+        _mixer.removeSource(_player);
+    }
+
     /// map key to action
     override Action findKeyAction(uint keyCode, uint flags) {
         Action action = _wave.findKeyAction(keyCode, flags);
@@ -483,22 +586,34 @@ class InstrEditorBody : VerticalLayout {
 class InstrumentEditorDialog : Dialog {
     protected ToolBarHost _toolbarHost;
     protected InstrEditorBody _body;
-    this(UIString caption, Window parentWindow = null, uint flags = DialogFlag.Modal | DialogFlag.Resizable, int initialWidth = 0, int initialHeight = 0) {
-        super(caption, parentWindow, flags, initialWidth, initialHeight);
+    protected Mixer _mixer;
+
+    this(Window parentWindow, Mixer mixer, int initialWidth = 0, int initialHeight = 0) {
+        _mixer = mixer;
+        super(UIString("Instrument Editor"d), parentWindow, DialogFlag.Modal | DialogFlag.Resizable, initialWidth, initialHeight);
     }
 
     ToolBarHost createToolbars() {
         ToolBarHost tbhost = new ToolBarHost();
         ToolBar tb = tbhost.getOrAddToolbar("toolbar1");
         tb.addButtons(ACTION_INSTRUMENT_OPEN_SOUND_FILE,
+                      ACTION_SEPARATOR,
+                      ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION,
+                      ACTION_SEPARATOR,
                       ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
+                      ACTION_SEPARATOR,
                       ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX
                       );
+        acceleratorMap.add([ACTION_INSTRUMENT_OPEN_SOUND_FILE,
+                           ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION,
+                           ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
+                           ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX]);
+
         return tbhost;
     }
 
     InstrEditorBody createBody() {
-        InstrEditorBody res = new InstrEditorBody();
+        InstrEditorBody res = new InstrEditorBody(_mixer);
         return res;
     }
 

@@ -34,6 +34,7 @@ class Mp3Player : AudioSource {
     private int _sourcePosition;
     private int _sourceFrames;
     private bool _paused = true;
+    private bool _ownWave;
 
     private WaveFile _file;
 
@@ -96,30 +97,61 @@ class Mp3Player : AudioSource {
         _sourcePosition = newPosition;
     }
 
-    /// load MP3 file
-    bool loadFromFile(string filename) {
-        import std.string : toStringz;
+
+    protected void clear() {
         {
             lock();
             scope(exit)unlock();
             _loaded = false;
             _sourcePosition = 0;
             _paused = true;
-            if (_filename == filename) {
-                // opening the same file as already opened - just move to start
-                return true;
-            }
             _filename = null;
-            if (_file) {
+            if (_file && _ownWave) {
                 destroy(_file);
                 _file = null;
             }
         }
+    }
+
+    // set loaded MP3 file
+    bool setWave(WaveFile wave, bool ownWave = false) {
+        if (_file is wave)
+            return _loaded;
+        import std.string : toStringz;
+        clear();
+        if (wave && wave.frames) {
+            lock();
+            scope(exit)unlock();
+            _file = wave;
+            _loaded = true;
+            _ownWave = ownWave;
+            _filename = wave.filename;
+            _sourcePosition = 0;
+            _sourceFrames = _file.frames;
+        } else {
+            // no file
+        }
+        return _loaded;
+    }
+
+    /// load MP3 file
+    bool loadFromFile(string filename) {
+        import std.string : toStringz;
+        if (filename == _filename) {
+            lock();
+            scope(exit)unlock();
+            // opening the same file as already opened - just move to start
+            _sourcePosition = 0;
+            _paused = true;
+            return _loaded;
+        }
+        clear();
         WaveFile f = loadSoundFile(filename, false);
         if (f) {
             lock();
             scope(exit)unlock();
             _file = f;
+            _ownWave = true;
             _loaded = true;
             _filename = filename;
             _sourcePosition = 0;
