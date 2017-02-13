@@ -33,6 +33,8 @@ class Mp3Player : AudioSource {
     private bool _loaded;
     private int _sourcePosition;
     private int _sourceFrames;
+    protected int _loopStart;
+    protected int _loopEnd;
     private bool _paused = true;
     private bool _ownWave;
 
@@ -77,6 +79,29 @@ class Mp3Player : AudioSource {
         if (newPosition > _sourceFrames)
             newPosition = _sourceFrames;
         _sourcePosition = newPosition;
+    }
+
+    @property float loopStart() { return _file ? _file.frameToTime(_loopStart) : 0; }
+    @property float loopEnd() { return _file ? _file.frameToTime(_loopEnd) : 0; }
+    void removeLoop() {
+        setLoop(0, 0);
+    }
+    void setLoop(float startSeconds, float endSeconds) {
+        lock();
+        scope(exit)unlock();
+        if (!_loaded)
+            return;
+        int start = cast(int)(startSeconds * _file.sampleRate);
+        int end = cast(int)(endSeconds * _file.sampleRate);
+        _file.limitFrameIndex(start);
+        _file.limitFrameIndex(end);
+        if (start + 50 < end) {
+            _loopStart = start;
+            _loopEnd = end;
+            _sourcePosition = _loopStart;
+        } else {
+            _loopStart = _loopEnd = 0;
+        }
     }
 
     @property bool loaded() { return _loaded; }
@@ -176,27 +201,28 @@ class Mp3Player : AudioSource {
         }
         int i = 0;
         int srcpos = _sourcePosition * _file.channels;
+        bool inLoop = (_loopStart < _loopEnd && _sourcePosition >= _loopStart && _sourcePosition <= _loopEnd);
         if (_file.sampleRate != samplesPerSecond) {
             // need resampling
             // simple get-nearest-frame resampler
-            int srcFrames = cast(int)(cast(long)frameCount * _file.sampleRate / samplesPerSecond);
-            //Log.d("Resampling ", srcFrames, " -> ", frameCount, " (", _file.sampleRate, "->", samplesPerSecond, ")");
+            float sampleTime = 1.0f / samplesPerSecond;
+            float time = _file.frameToTime(_sourcePosition);
             for (; i < frameCount; i++) {
-                int index = (i * srcFrames / frameCount + _sourcePosition) * _file.channels;
-                if (index + _file.channels - 1 < _file.data.length) {
-                    float sample1 = _file.data.ptr[index];
-                    float sample2 = _file.channels > 1 ? _file.data.ptr[index + 1] : sample1;
-                    if (!_unityVolume) {
-                        sample1 *= _volume;
-                        sample2 *= _volume;
-                    }
-                    putSamples(buf, sample1, sample2);
-                } else {
-                    putSamples(buf, 0.0f, 0.0f);
+                float sample1 = _file.getSampleInterpolated(time, 0);
+                float sample2 = _file.getSampleInterpolated(time, 1);
+                if (!_unityVolume) {
+                    sample1 *= _volume;
+                    sample2 *= _volume;
                 }
+                putSamples(buf, sample1, sample2);
                 buf += blockAlign;
+                time += sampleTime;
+                _sourcePosition = _file.timeToFrame(time);
+                if (inLoop && _sourcePosition >= _loopEnd) {
+                    _sourcePosition = _loopStart;
+                    time = _file.frameToTime(_sourcePosition);
+                }
             }
-            _sourcePosition += srcFrames;
             if (_sourcePosition > _sourceFrames)
                 _sourcePosition = _sourceFrames;
         } else {
@@ -204,13 +230,22 @@ class Mp3Player : AudioSource {
             for (; i < frameCount; i++) {
                 float sample1 = _file.data.ptr[srcpos++];
                 float sample2 = _file.channels > 1 ? _file.data.ptr[srcpos++] : sample1;
+                if (!_unityVolume) {
+                    sample1 *= _volume;
+                    sample2 *= _volume;
+                }
                 putSamples(buf, sample1, sample2);
-                _sourcePosition++;
+                buf += blockAlign;
+                if (inLoop && _sourcePosition == _loopEnd)
+                    _sourcePosition = _loopStart;
+                else
+                    _sourcePosition++;
                 if (_sourcePosition >= _sourceFrames)
                     break;
             }
             for (; i < frameCount; i++) {
                 putSamples(buf, 0.0f, 0.0f);
+                buf += blockAlign;
             }
         }
         return true;

@@ -15,6 +15,10 @@ import soundtab.audio.loader;
 import soundtab.audio.mp3player;
 
 class HRuler : Widget {
+    float _startPos = 0;
+    float _totalDuration = 0;
+    float _visibleDuration = 0;
+
     this() {
         super("hruler");
         layoutWidth = FILL_PARENT;
@@ -28,6 +32,12 @@ class HRuler : Widget {
     override void measure(int parentWidth, int parentHeight) {
         int fh = font.height;
         measuredContent(parentWidth, parentHeight, 0, fh + 8);
+    }
+
+    void setPosition(float startPos, float totalDuration, float visibleDuration) {
+        _startPos = startPos;
+        _totalDuration = totalDuration;
+        _visibleDuration = visibleDuration;
     }
 }
 
@@ -203,6 +213,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                 } else {
                     _player.paused = true;
                     getPlayPosition();
+                    _player.removeLoop();
                 }
             }
             return true;
@@ -216,10 +227,12 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                     if (_selEnd > _selStart || _cursorPos >= _selEnd)
                         _cursorPos = _selStart;
                     setPlayPosition();
+                    _player.setLoop(_file.frameToTime(_selStart), _file.frameToTime(_selEnd));
                     _player.paused = false;
                 } else {
                     _player.paused = true;
                     getPlayPosition();
+                    _player.removeLoop();
                 }
             }
             return true;

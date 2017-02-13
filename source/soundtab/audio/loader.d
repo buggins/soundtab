@@ -40,6 +40,27 @@ class WaveFile {
     float frameToTime(int frame) {
         return (cast(float)frame / sampleRate);
     }
+    void limitFrameIndex(ref int index) {
+        if (index >= frames)
+            index = frames;
+        if (index < 0)
+            index = 0;
+    }
+    float getSample(int index, int channel = 0) {
+        if (index < 0 || index >= frames)
+            return 0;
+        return data.ptr[index * channels + channel];
+    }
+    /// linearly interpolated sample by time
+    float getSampleInterpolated(float time, int channel = 0) {
+        if (channel >= channels)
+            channel = channel % channels;
+        int index = cast(int)(time * sampleRate);
+        float deltaTime = time - cast(float)index / sampleRate;
+        float s0 = getSample(index, channel);
+        float s1 = getSample(index + 1, channel);
+        return s0 * (1 - deltaTime) + s1 * deltaTime;
+    }
 }
 
 float[] shortToFloat(short[] buf, int step = 1) {
