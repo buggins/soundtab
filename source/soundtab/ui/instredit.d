@@ -1,14 +1,16 @@
 module soundtab.ui.instredit;
 
 import dlangui.platforms.common.platform;
-import dlangui.dialogs.dialog;
 import dlangui.core.logger;
 import dlangui.core.i18n;
+import dlangui.core.stdaction;
 import dlangui.widgets.widget;
 import dlangui.widgets.layouts;
 import dlangui.widgets.controls;
 import dlangui.widgets.toolbars;
 import dlangui.widgets.scrollbar;
+import dlangui.dialogs.dialog;
+import dlangui.dialogs.filedlg;
 import soundtab.ui.actions;
 import soundtab.audio.audiosource;
 import soundtab.audio.loader;
@@ -82,7 +84,15 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     }
     @property WaveFile file() { return _file; }
     @property void file(WaveFile f) { 
+        if (_player) {
+            _player.paused = true;
+            _player.setWave(f, false);
+        }
         _file = f;
+        _selStart = _selEnd = 0;
+        _cursorPos = 0;
+        _scrollPos = 0;
+        _zoomCache = null;
         zoomFull();
     }
     @property Mp3Player player() { return _player; }
@@ -151,6 +161,28 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             return true;
         return super.onKeyEvent(event);
     }
+
+    void openSampleFile(string filename) {
+        WaveFile f = loadSoundFile(filename);
+        if (f) {
+            file = f;
+        }
+    }
+    void openSampleFile() {
+        import std.file;
+        FileDialog dlg = new FileDialog(UIString("Open Sample MP3 file"d), window, null);
+        dlg.addFilter(FileFilterEntry(UIString("Sound files (*.mp3;*.wav)"d), "*.mp3;*.wav"));
+        dlg.dialogResult = delegate(Dialog dlg, const Action result) {
+            if (result.id == ACTION_OPEN.id) {
+                string filename = result.stringParam;
+                if (filename.exists && filename.isFile) {
+                    openSampleFile(filename);
+                }
+            }
+        };
+        dlg.show();
+    }
+
     /// override to handle specific actions
     override bool handleAction(const Action a) {
         switch(a.id) {
@@ -237,7 +269,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             }
             return true;
         case Actions.InstrumentOpenSoundFile:
-            // TODO:
+            openSampleFile();
             return true;
         default:
             break;
