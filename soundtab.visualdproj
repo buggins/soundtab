@@ -419,6 +419,7 @@
      <File path="source\soundtab\audio\loader.d" />
      <File path="source\soundtab\audio\mp3player.d" />
      <File path="source\soundtab\audio\playback.d" />
+     <File path="source\soundtab\audio\wavefile.d" />
     </Folder>
     <Folder name="ui">
      <File path="source\soundtab\ui\actions.d" />

@@ -105,6 +105,7 @@ extern (C) int UIAppMain(string[] args) {
     //window.mainWidget = (new Button()).text("Hello, world!"d).margins(Rect(20,20,20,20));
     new SoundFrame(window);
 
+    window.windowIcon = drawableCache.getImage("dlangui-logo1");
 
     // show window
     window.show();

@@ -2,6 +2,7 @@ module soundtab.audio.loader;
 
 import derelict.mpg123;
 import dlangui.core.logger;
+public import soundtab.audio.wavefile;;
 
 private __gshared bool mpg123Loaded;
 private __gshared bool mpg123Error;
@@ -26,41 +27,6 @@ bool loadMPG123() {
 void uninitMP3Decoder() {
     if (mpg123Loaded)
         mpg123_exit();
-}
-
-class WaveFile {
-    string filename;
-    int channels;
-    int sampleRate;
-    int frames;
-    float[] data;
-    int timeToFrame(float time) {
-        return cast(int)(time * sampleRate);
-    }
-    float frameToTime(int frame) {
-        return (cast(float)frame / sampleRate);
-    }
-    void limitFrameIndex(ref int index) {
-        if (index >= frames)
-            index = frames;
-        if (index < 0)
-            index = 0;
-    }
-    float getSample(int index, int channel = 0) {
-        if (index < 0 || index >= frames)
-            return 0;
-        return data.ptr[index * channels + channel];
-    }
-    /// linearly interpolated sample by time
-    float getSampleInterpolated(float time, int channel = 0) {
-        if (channel >= channels)
-            channel = channel % channels;
-        int index = cast(int)(time * sampleRate);
-        float deltaTime = time - cast(float)index / sampleRate;
-        float s0 = getSample(index, channel);
-        float s1 = getSample(index + 1, channel);
-        return s0 * (1 - deltaTime) + s1 * deltaTime;
-    }
 }
 
 float[] shortToFloat(short[] buf, int step = 1) {
