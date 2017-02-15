@@ -11,6 +11,7 @@ enum Actions : int {
     InstrumentOpenSoundFile,
     InstrumentEditorPlayPause,
     InstrumentEditorPlayPauseSelection,
+    InstrumentCreateLoop,
     ViewHZoomIn,
     ViewHZoomOut,
     ViewHZoom1,
@@ -30,6 +31,7 @@ const Action ACTION_INSTRUMENT_EDITOR = new Action(Actions.InstrumentEditor, "In
 const Action ACTION_INSTRUMENT_OPEN_SOUND_FILE = new Action(Actions.InstrumentOpenSoundFile, "Open sound file"d, "document-open", KeyCode.F3, 0);
 const Action ACTION_INSTRUMENT_PLAY_PAUSE = new Action(Actions.InstrumentEditorPlayPause, "Play from cursor/pause"d, "play-pause", KeyCode.SPACE, 0);
 const Action ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION = new Action(Actions.InstrumentEditorPlayPauseSelection, "Play/pause"d, "play-pause-sel", KeyCode.F5, 0);
+const Action ACTION_INSTRUMENT_CREATE_LOOP = new Action(Actions.InstrumentCreateLoop, "Create loop for selection"d, "create-loop", KeyCode.INS, 0);
 const Action ACTION_VIEW_HZOOM_IN = new Action(Actions.ViewHZoomIn, "H Zoom In"d, "hzoomin", KeyCode.ADD, 0);
 const Action ACTION_VIEW_HZOOM_OUT = new Action(Actions.ViewHZoomOut, "H Zoom Out"d, "hzoomout", KeyCode.SUB, 0);
 const Action ACTION_VIEW_HZOOM_1 = new Action(Actions.ViewHZoom1, "H Zoom 1:1"d, "hzoom1", KeyCode.ADD, KeyFlag.Control);

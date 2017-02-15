@@ -54,6 +54,7 @@ struct MinMax {
 }
 
 class WaveFileWidget : WidgetGroupDefaultDrawing {
+    protected Mixer _mixer;
     protected Mp3Player _player;
     protected WaveFile _file;
     protected ScrollBar _hScroll;
@@ -68,10 +69,15 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     protected MinMax[] _zoomCache;
     protected int _zoomCacheScale;
     protected ulong _playTimer;
-    this() {
+    this(Mixer mixer) {
+        _mixer = mixer;
+        _player = new Mp3Player();
+        _mixer.addSource(_player);
         _hruler = new HRuler();
         _hScroll = new ScrollBar("wavehscroll", Orientation.Horizontal);
         _hScroll.layoutWidth = FILL_PARENT;
+        //styleId = "EDIT_BOX";
+        backgroundImageId = "editbox_background_dark";
         addChild(_hruler);
         addChild(_hScroll);
         _hScroll.scrollEvent = &onScrollEvent;
@@ -81,6 +87,13 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
             ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX,
             ACTION_INSTRUMENT_OPEN_SOUND_FILE, ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION]);
+    }
+    ~this() {
+        if (_mixer) {
+            _player.paused = true;
+            _mixer.removeSource(_player);
+            destroy(_player);
+        }
     }
     @property WaveFile file() { return _file; }
     @property void file(WaveFile f) { 
@@ -94,9 +107,10 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         _scrollPos = 0;
         _zoomCache = null;
         zoomFull();
+        if (window)
+            window.update();
     }
     @property Mp3Player player() { return _player; }
-    @property void player(Mp3Player v) { _player = v; }
 
     void updateZoomCache() {
         if (!_file || _zoomCacheScale == _hscale || _hscale <= 16)
@@ -121,6 +135,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             _hscale = _file.frames / (_clientRect.width ? _clientRect.width : 1);
         }
         updateView();
+        invalidate();
     }
     MinMax visibleYRange() {
         MinMax res;
@@ -278,6 +293,14 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             break;
         }
         return super.handleAction(a);
+    }
+
+    WaveFile getSelectionUpsampled() {
+        int sellen = _selEnd - _selStart;
+        if (sellen > 16) {
+            return _file.upsample4x(_selStart, _selEnd);
+        }
+        return null;
     }
 
     void ensureCursorVisible() {
@@ -511,6 +534,8 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
 
     /// process mouse event; return true if event is processed by widget.
     override bool onMouseEvent(MouseEvent event) {
+        if (event.action == MouseAction.ButtonDown && !focused && canFocus)
+            setFocus();
         if (_clientRect.isPointInside(event.x, event.y)) {
             int x = (_scrollPos + (event.x - _clientRect.left)) * _hscale;
             if ((event.action == MouseAction.ButtonDown || event.action == MouseAction.Move) && (event.flags & MouseFlag.LButton)) {
@@ -596,9 +621,21 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
 
 }
 
+class SourceWaveFileWidget : WaveFileWidget {
+    this(Mixer mixer) {
+        super(mixer);
+    }
+}
+
+class LoopWaveWidget : WaveFileWidget {
+    this(Mixer mixer) {
+        super(mixer);
+    }
+}
+
 class InstrEditorBody : VerticalLayout {
-    WaveFileWidget _wave;
-    Mp3Player _player;
+    SourceWaveFileWidget _wave;
+    LoopWaveWidget _loop;
     protected Mixer _mixer;
     this(Mixer mixer) {
         super("instrEditBody");
@@ -606,20 +643,28 @@ class InstrEditorBody : VerticalLayout {
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
         backgroundColor(0x102010);
-        _wave = new WaveFileWidget();
-        _player = new Mp3Player();
-        WaveFile wav = loadSoundFile("jmj-chronologie3.mp3", true);
-        _wave.file = wav;
-        _player.setWave(wav);
-        _wave.player = _player;
-        _mixer.addSource(_player);
+        _wave = new SourceWaveFileWidget(_mixer);
         addChild(_wave);
+        _loop = new LoopWaveWidget(_mixer);
+        addChild(_loop);
         addChild(new VSpacer());
-        //_player.paused = false;
     }
 
     ~this() {
-        _mixer.removeSource(_player);
+    }
+
+    /// override to handle specific actions
+    override bool handleAction(const Action a) {
+        switch(a.id) {
+            case Actions.InstrumentCreateLoop:
+                WaveFile tmp = _wave.getSelectionUpsampled();
+                if (tmp)
+                    _loop.file = tmp;
+                return true;
+            default:
+                break;
+        }
+        return super.handleAction(a);
     }
 
     /// map key to action
@@ -646,14 +691,16 @@ class InstrumentEditorDialog : Dialog {
         ToolBar tb = tbhost.getOrAddToolbar("toolbar1");
         tb.addButtons(ACTION_INSTRUMENT_OPEN_SOUND_FILE,
                       ACTION_SEPARATOR,
-                      ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION,
+                      ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION, 
+                      ACTION_SEPARATOR,
+                      ACTION_INSTRUMENT_CREATE_LOOP,
                       ACTION_SEPARATOR,
                       ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
                       ACTION_SEPARATOR,
                       ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX
                       );
         acceleratorMap.add([ACTION_INSTRUMENT_OPEN_SOUND_FILE,
-                           ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION,
+                           ACTION_INSTRUMENT_PLAY_PAUSE, ACTION_INSTRUMENT_PLAY_PAUSE_SELECTION, ACTION_INSTRUMENT_CREATE_LOOP,
                            ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
                            ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX]);
 
@@ -675,7 +722,6 @@ class InstrumentEditorDialog : Dialog {
             return action;
         return super.findKeyAction(keyCode, flags);
     }
-
     /// override to implement creation of dialog controls
     override void initialize() {
         Log.d("InstrumentEditorDialog.initialize");
