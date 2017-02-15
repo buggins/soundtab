@@ -12,6 +12,9 @@ class WaveFile {
     float frameToTime(int frame) {
         return (cast(float)frame / sampleRate);
     }
+    float frameToTime(float frame) {
+        return (frame / sampleRate);
+    }
     void limitFrameIndex(ref int index) {
         if (index >= frames)
             index = frames;
@@ -27,7 +30,7 @@ class WaveFile {
         int len = cast(int)buf.length;
         for (int i = 0; i < len; i++) {
             int index = startIndex + i;
-            buf.ptr[i] = index >= 0 && index < len ? data.ptr[index] : 0.0f;
+            buf.ptr[i] = index >= 0 && index < frames ? data.ptr[index] : 0.0f;
         }
     }
     void getSamplesZpad4(int startIndex, int channel, float[] buf) {
@@ -132,11 +135,130 @@ class WaveFile {
                 maxdst = res.data[i];
 
         import dlangui.core.logger;
-        Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
 
-        int reslen = cast(int)fftFrame.length;
-        reslen++;
+        Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
+        float freqPosition = res.frameToTime(res.frames / 2);
+        float freqBigRange = res.calcLocalFrequency(freqPosition, 40);
+        float freqShortRange = res.calcLocalFrequency(freqPosition, freqBigRange / 4);
+        float freqShortestRange = res.calcLocalFrequency(freqPosition, freqBigRange / 2);
+        float freqShortestRange2 = res.calcLocalFrequency(freqPosition, freqBigRange);
+        Log.d("Frequencies: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+
+        float freqPosition0 = freqPosition - 4/freqBigRange;
+        float freqPosition1 = freqPosition + 4/freqBigRange;
+        float freqPosition2 = freqPosition - 2/freqBigRange;
+        float freqPosition3 = freqPosition + 2/freqBigRange;
+        float freqPosition4 = freqPosition - 0.5/freqBigRange;
+        float freqPosition5 = freqPosition + 0.5/freqBigRange;
+
+        freqBigRange = res.calcLocalFrequency(freqPosition0, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition0, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition0, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition0, freqBigRange);
+        Log.d("Frequencies at -4 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+        freqBigRange = res.calcLocalFrequency(freqPosition1, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition1, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition1, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition1, freqBigRange);
+        Log.d("Frequencies at +4 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+
+        freqBigRange = res.calcLocalFrequency(freqPosition2, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition2, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition2, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition2, freqBigRange);
+        Log.d("Frequencies at -2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+        freqBigRange = res.calcLocalFrequency(freqPosition3, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition3, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition3, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition3, freqBigRange);
+        Log.d("Frequencies at +2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+
+        freqBigRange = res.calcLocalFrequency(freqPosition4, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition4, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition4, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition4, freqBigRange);
+        Log.d("Frequencies at -1/2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+        freqBigRange = res.calcLocalFrequency(freqPosition5, 40);
+        freqShortRange = res.calcLocalFrequency(freqPosition5, freqBigRange / 4);
+        freqShortestRange = res.calcLocalFrequency(freqPosition5, freqBigRange / 2);
+        freqShortestRange2 = res.calcLocalFrequency(freqPosition5, freqBigRange);
+        Log.d("Frequencies at +1/2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
+
         return res;
+    }
+
+    float calcLocalFrequency(float position, float minFreq) {
+        import dlangui.core.logger;
+        int pos = timeToFrame(position);
+        int windowSize = timeToFrame(1 / minFreq) * 2;
+        windowSize &= 0xFFFFFE;
+        float[] window = blackmanWindow(windowSize);
+        float[] frame = new float[windowSize + 1];
+        float[] corr = new float[windowSize + 1];
+        float[] windowcorr = new float[windowSize + 1];
+        getSamples(pos - windowSize / 2, 0, frame);
+        for (int i = 0; i < frame.length; i++) {
+            frame[i] *= window[i];
+        }
+        correlation(frame, frame, corr);
+        correlation(window, window, windowcorr);
+
+        int p = 1;
+        for (; p < corr.length; p++) {
+            if (corr[p] < 0)
+                break;
+        }
+        //Log.d("Negative correlation at offset ", p);
+        float maxcorr = corr[p];
+        int maxcorrpos = p;
+        for (; p < corr.length; p++) {
+            if (maxcorr < corr[p]) {
+                maxcorr = corr[p];
+                maxcorrpos = p;
+            }
+        }
+        float a, b, c;
+        float correction1 = windowcorr[maxcorrpos-1];
+        float correction2 = windowcorr[maxcorrpos];
+        float correction3 = windowcorr[maxcorrpos+1];
+        correction1 = correction2 = correction3 = 1;
+        calcParabola(maxcorrpos - 1, 
+                     corr[maxcorrpos-1] / correction1, 
+                     corr[maxcorrpos] / correction2, 
+                     corr[maxcorrpos+1] / correction3, a, b, c);
+        float x0 = -b / (2 * a);
+        //Log.d("Max correlation = ", maxcorr, " at offset ", maxcorrpos, " corr0: ", corr[0], " approx best position = ", x0);
+        float period = frameToTime(x0);
+        if (period > 0)
+            return 1 / period;
+        return 0;
     }
 }
 
+// calc parabola coefficients for points (x1, y1), (x1 + 1, y2), (x1 + 2, y3)
+void calcParabola(int x1, float y1, float y2, float y3, ref float a, ref float b, ref float c) {
+    a = (y3 + y1) / 2 - y2;
+    b = y2 - y1 - a * (2 * x1 + 1);
+    c = (x1 + 1) *y1 - x1 * y2 + a * x1 * (x1 + 1);
+}
+
+// generate blackman window in array [0..N] (value at N/2 == 1)
+float[] blackmanWindow(int N) {
+    import std.math : cos, PI;
+    float[] res = new float[N + 1];
+    for (int i = 1; i <= N + 1; i++) {
+        res[i - 1] = 0.42f - 0.5f * cos(2 * PI * i / (N + 2)) + 0.08 * cos(4 * PI * i  / (N + 2));
+    }
+    return res;
+}
+
+void correlation(float[] a, float[] b, float[] res) {
+    assert(a.length == b.length);
+    assert(res.length >= a.length);
+    for (int diff = 0; diff < a.length; diff++) {
+        float sum = 0;
+        for (int i = 0; i < a.length - diff; i++)
+            sum += a[i] * b[i + diff];
+        res[diff] = sum;
+    }
+}
