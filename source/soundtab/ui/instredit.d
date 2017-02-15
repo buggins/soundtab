@@ -213,10 +213,9 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                     _hscale = 1;
                 _scrollPos = _selStart / _hscale;
                 updateView();
-                //WaveFile subrange = _file.getRange(_selStart, _selEnd);
-                //WaveFile tmp = subrange.upsample4x();
-                //file = tmp;
-                //updateView();
+                WaveFile tmp = _file.upsample4x(_selStart, _selEnd);
+                file = tmp;
+                updateView();
             }
             return true;
         case Actions.ViewVZoom1:

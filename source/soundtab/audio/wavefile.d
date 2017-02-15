@@ -65,10 +65,27 @@ class WaveFile {
         return res;
     }
 
+    WaveFile upsample4x(int start, int end) {
+        if (start < 0)
+            start = 0;
+        if (end > frames)
+            end = frames;
+        int dstart = 16;
+        int dend = 16;
+        if (start - dstart < 0)
+            dstart = start;
+        if (end + dend > frames)
+            dend = frames - end;
+        WaveFile tmp = getRange(start - dstart, end + dend);
+        WaveFile resampled = tmp.upsample4x();
+        return resampled.getRange(dstart * 4, resampled.frames - dend * 4);
+    }
+
     WaveFile upsample4x() {
         import std.numeric;
         import std.complex;
-        immutable int BATCH_SIZE = 1024;
+        immutable int BATCH_SIZE = 256;
+        immutable int overlap = BATCH_SIZE/4;
         Fft fft = new Fft(BATCH_SIZE);
         Fft ifft = new Fft(BATCH_SIZE);
         WaveFile res = new WaveFile();
@@ -78,28 +95,47 @@ class WaveFile {
         res.data = new float[res.frames];
         res.data[0..$] = 0;
         float[] srcBuf = new float[BATCH_SIZE];
+        Complex!double[] fftFrame = new Complex!double[BATCH_SIZE];
         Complex!double[] invBuf = new Complex!double[BATCH_SIZE];
+
+        float maxsrc = 0;
+        float maxdst = 0;
+        for (int i = 0; i < frames; i++)
+            if (maxsrc < data[i])
+                maxsrc = data[i];
         
-        for (int x = -BATCH_SIZE / 4 / 4; x < frames; x += BATCH_SIZE / 2 / 4) {
+        for (int x = -overlap / 4; x < frames; x += BATCH_SIZE / 4 - overlap / 2) {
             getSamplesZpad4(x, 0, srcBuf);
-            Complex!double[] fftFrame = fft.fft(srcBuf);
-            static if (false) {
-                invBuf[0 .. BATCH_SIZE / 2] = fftFrame[0 .. BATCH_SIZE / 2];
-                invBuf[$ - BATCH_SIZE / 2 .. $] = fftFrame[BATCH_SIZE / 2 .. $];
-                invBuf[BATCH_SIZE / 2 .. $ - BATCH_SIZE / 2] = Complex!double(0, 0);
-            } else {
-                invBuf[0 .. BATCH_SIZE] = fftFrame[0 .. BATCH_SIZE];
-                invBuf[BATCH_SIZE .. $] = Complex!double(0, 0);
+            //immutable int SMOOTH_RANGE = BATCH_SIZE / 10;
+            //for (int i = 0; i < SMOOTH_RANGE; i++) {
+            //    float k = 1.0f - i / cast(float)SMOOTH_RANGE;
+            //    float s1 = srcBuf[i * 4];
+            //    float s2 = srcBuf[BATCH_SIZE - i * 4 - 4];
+            //    float sm = (s1 + s2) / 2;
+            //    srcBuf[i * 4] = s1 * (1 - k) + sm * k;
+            //    srcBuf[BATCH_SIZE - i * 4 - 4] = s2 * (1 - k) + sm * k;
+            //}
+            fft.fft(srcBuf, invBuf);
+            for (int i = BATCH_SIZE / 8; i <= BATCH_SIZE * 7 / 8; i++) {
+                invBuf[i] = Complex!double(0,0);
             }
-            Complex!double[] upsampledFrame = ifft.inverseFft(invBuf);
-            for (int i = 0; i < BATCH_SIZE * 2; i++) {
-                int index = x * 4 + i  + BATCH_SIZE;
+            ifft.inverseFft(invBuf, fftFrame);
+            for (int i = overlap; i < BATCH_SIZE - overlap; i++) {
+                int index = x * 4 + i;
                 if (index >= 0 && index < res.frames)
-                    res.data.ptr[index] = upsampledFrame[i + BATCH_SIZE].re;
+                    res.data.ptr[index] = fftFrame[i].re * 4;
             }
-            int reslen = cast(int)fftFrame.length;
-            reslen++;
         }
+
+        for (int i = 0; i < res.frames; i++)
+            if (maxdst < res.data[i])
+                maxdst = res.data[i];
+
+        import dlangui.core.logger;
+        Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
+
+        int reslen = cast(int)fftFrame.length;
+        reslen++;
         return res;
     }
 }
