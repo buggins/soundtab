@@ -117,6 +117,52 @@ private ushort decodeUshort(ubyte[] buf, int pos) {
     return cast(ushort)buf[pos] | (cast(uint)buf[pos + 1] << 8);
 }
 
+float decode24bitSample(ubyte[] buf, size_t pos) {
+    uint v = cast(uint)buf[pos] | (cast(uint)buf[pos + 1] << 8) | (cast(uint)buf[pos + 2] << 16);
+    if (v & 0x800000) // sign extension
+        v |= 0xFF000000;
+    return (cast(int)v) / cast(float)(0x800000);
+}
+
+
+
+struct RIFFChunkIterator {
+    ubyte[] content;
+    uint pos;
+    ubyte[] chunkName;
+    uint chunkSize;
+    ubyte[] chunkData;
+    bool init(ubyte[] data) {
+        content = data;
+        if (!content)
+            return false;
+        if (content.length < 100)
+            return false;
+        if (content[0..4] != ['R', 'I', 'F', 'F'])
+            return false;
+        if (content[8..12] != ['W', 'A', 'V', 'E'])
+            return false;
+        uint sz = decodeUint(content, 4);
+        if (sz + 8 != content.length)
+            return false;
+        return nextChunk(12);
+    }
+    bool nextChunk(uint chunkFileOffset) {
+        pos = chunkFileOffset;
+        if (pos + 8 > content.length)
+            return false;
+        chunkName = content[pos .. pos + 4];
+        chunkSize = decodeUint(content, pos + 4);
+        if (pos + 8 + chunkSize > content.length)
+            return false; // invalid chunk size
+        chunkData = content[pos + 8 .. pos + 8 + chunkSize];
+        return true;
+    }
+    bool nextChunk() {
+        return nextChunk(pos + 8 + chunkSize);
+    }
+}
+
 WaveFile loadSoundFileWAV(string filename, bool forceMono = false) {
     immutable ushort FORMAT_PCM = 1;
     immutable ushort FORMAT_FLOAT = 3;
@@ -128,46 +174,47 @@ WaveFile loadSoundFileWAV(string filename, bool forceMono = false) {
     } catch (Exception e) {
         //
     }
-    if (!content)
+    RIFFChunkIterator riff;
+    if (!riff.init(content)) {
+        Log.e("Invalid RIFF file header in file ", filename);
         return null;
-    if (content.length < 100)
+    }
+    ubyte[] formatData;
+    ubyte[] data;
+    do {
+        if (riff.chunkName == ['f', 'm', 't', ' ']) {
+            formatData = riff.chunkData;
+        } else if (riff.chunkName == ['d', 'a', 't', 'a']) {
+            data = riff.chunkData;
+        }
+    } while (riff.nextChunk());
+
+    if (!formatData) {
+        Log.e("fmt chunk not found in file ", filename);
         return null;
-    if (content[0..4] != ['R', 'I', 'F', 'F'])
+    }
+    if (!data) {
+        Log.e("data chunk not found in file ", filename);
         return null;
-    if (content[8..16] != ['W', 'A', 'V', 'E', 'f', 'm', 't', ' '])
+    }
+    if (formatData.length < 16 || formatData.length > 100)
         return null;
-    uint sz = decodeUint(content, 4);
-    if (sz + 8 != content.length)
-        return null;
-    uint fmtsz = decodeUint(content, 16);
-    if (fmtsz != 16 && fmtsz != 18)
-        return null;
-    ushort audioFormat = decodeUshort(content, 20);
+    ushort audioFormat = decodeUshort(formatData, 0);
     if (audioFormat != FORMAT_PCM && audioFormat != FORMAT_FLOAT)
         return null; // not a PCM nor float
-    ushort nChannels = decodeUshort(content, 22);
-    uint sampleRate = decodeUint(content, 24);
-    uint byteRate = decodeUint(content, 28);
-    ushort nAlign = decodeUshort(content, 32);
-    ushort nBitsPerSample = decodeUshort(content, 34);
-    if ((nBitsPerSample != 16 && audioFormat == FORMAT_PCM) || (nBitsPerSample != 32 && audioFormat == FORMAT_FLOAT))
+    ushort nChannels = decodeUshort(formatData, 2);
+    uint sampleRate = decodeUint(formatData, 4);
+    uint byteRate = decodeUint(formatData, 8);
+    ushort nAlign = decodeUshort(formatData, 12);
+    ushort nBitsPerSample = decodeUshort(formatData, 14);
+    if ((nBitsPerSample != 16 && nBitsPerSample != 24 && audioFormat == FORMAT_PCM) || (nBitsPerSample != 32 && audioFormat == FORMAT_FLOAT))
         return null;
     if (sampleRate < 11025 || sampleRate > 96000)
         return null;
     if (nAlign != nChannels * nBitsPerSample / 8)
         return null; // invalid align
-    int blockStart = audioFormat == FORMAT_PCM ? 36 : 38;
-    ushort cbSize = audioFormat == FORMAT_PCM ? 0 : decodeUshort(content, 36);
 
-    blockStart += cbSize;
-    while (content[blockStart..blockStart + 4] != ['d', 'a', 't', 'a']) {
-        uint blocksz = decodeUint(content, blockStart + 4);
-        blockStart = blockStart + blocksz + 8;
-        if (blockStart >= content.length)
-            return null;
-    }
-
-    uint dataSize = decodeUint(content, blockStart + 4);
+    uint dataSize = cast(uint)data.length;
     uint nSamples = dataSize / nAlign;
     if (nSamples < 100)
         return null;
@@ -186,8 +233,12 @@ WaveFile loadSoundFileWAV(string filename, bool forceMono = false) {
             int dstindex = i * dstchannels + channel;
             float dst = 0;
             if (audioFormat == FORMAT_PCM) {
-                ushort src = decodeUshort(content, blockStart + 8 + (index * ushort.sizeof));
-                dst = (cast(short)src) / 32767.0f;
+                if (nBitsPerSample == 24) {
+                    dst = decode24bitSample(data, index * 3);
+                } else {
+                    ushort src = decodeUshort(data, (index * ushort.sizeof));
+                    dst = (cast(short)src) / 32767.0f;
+                }
             } else {
                 // IEEE float format
                 union convertUnion {
@@ -196,7 +247,7 @@ WaveFile loadSoundFileWAV(string filename, bool forceMono = false) {
                 }
                 convertUnion tmp;
 
-                tmp.intvalue = decodeUint(content, blockStart + 8 + (index * uint.sizeof));
+                tmp.intvalue = decodeUint(data, (index * uint.sizeof));
                 dst = tmp.floatvalue;
             }
             res.data[dstindex] = dst;
