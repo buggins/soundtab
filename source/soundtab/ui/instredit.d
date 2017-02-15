@@ -40,7 +40,66 @@ class HRuler : Widget {
         _startPos = startPos;
         _totalDuration = totalDuration;
         _visibleDuration = visibleDuration;
+        invalidate();
     }
+
+    /// Draw widget at its position to buffer
+    override void onDraw(DrawBuf buf) {
+        import std.format;
+        import std.math : round;
+        import std.utf : toUTF32;
+        if (visibility != Visibility.Visible)
+            return;
+        super.onDraw(buf);
+        _needDraw = false;
+        auto saver = ClipRectSaver(buf, _pos, alpha);
+        int longDy = _pos.height - font.height - 2;
+        int shortDy = longDy * 40 / 100;
+        int ytext = _pos.bottom - font.height - 2;
+        if (_visibleDuration > 0.00001 && _totalDuration > 0.00001 && _pos.width > 10) {
+            double secondsPerPixel = _visibleDuration / _pos.width;
+            double scale = 0.00001;
+            for (; scale < 10000; scale = scale * 10) {
+                if (scale / secondsPerPixel >= 50)
+                    break;
+            }
+            double t = (cast(int)round(_startPos / scale)) * scale - scale;
+            for(; t < _startPos + _visibleDuration + scale; t += scale) {
+                if (t < 0)
+                    continue;
+                int x = cast(int)(_pos.left + (t - _startPos) / secondsPerPixel);
+                buf.fillRect(Rect(x, _pos.top, x + 1, _pos.top + longDy), 0xB0B0A0);
+                for (int xx = 1; xx < 10; xx++) {
+                    double tt = t + xx * scale / 10;
+                    int xxx = cast(int)(_pos.left + (tt - _startPos) / secondsPerPixel);
+                    buf.fillRect(Rect(xxx, _pos.top, xxx + 1, _pos.top + shortDy), 0xB0B0A0);
+                }
+                int seconds = cast(int)t;
+                int minutes = seconds / 60;
+                seconds = seconds % 60;
+                string txt;
+                if (scale >= 1)
+                    txt = "%d:%02d".format(minutes,seconds);
+                else if (scale >= 0.1) {
+                    int frac = cast(int)round(((t - seconds) * 10));
+                    txt = "%d:%02d.%01d".format(minutes,seconds,frac);
+                } else if (scale >= 0.01) {
+                    int frac = cast(int)round(((t - seconds) * 100));
+                    txt = "%d:%02d.%02d".format(minutes,seconds,frac);
+                } else if (scale >= 0.001) {
+                    int frac = cast(int)round(((t - seconds) * 1000));
+                    txt = "%d:%02d.%03d".format(minutes,seconds,frac);
+                } else {
+                    int frac = cast(int)round(((t - seconds) * 10000));
+                    txt = "%d:%02d.%04d".format(minutes,seconds,frac);
+                }
+                dstring dtxt = txt.toUTF32;
+                int w = font.textSize(dtxt).x;
+                font.drawText(buf, x - w / 2, ytext, dtxt, 0x808080);
+            }
+        }
+    }
+
 }
 
 struct MinMax {
@@ -228,9 +287,6 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                     _hscale = 1;
                 _scrollPos = _selStart / _hscale;
                 updateView();
-                WaveFile tmp = _file.upsample4x(_selStart, _selEnd);
-                file = tmp;
-                updateView();
             }
             return true;
         case Actions.ViewVZoom1:
@@ -382,6 +438,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             _hScroll.maxValue = 0;
             _hScroll.pageSize = 1;
             _hScroll.position = 0;
+            _hruler.setPosition(0, 0, 0);
         } else {
             int w = _clientRect.width;
             int fullw = _file.frames / _hscale;
@@ -401,6 +458,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                 _hScroll.requestLayout();
             }
             _hScroll.position = _scrollPos;
+            _hruler.setPosition(_file.frameToTime(_scrollPos * _hscale), _file.frameToTime(fullw * _hscale), _file.frameToTime(visiblew * _hscale));
         }
     }
 
