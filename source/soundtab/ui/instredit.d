@@ -142,6 +142,8 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         _hScroll.scrollEvent = &onScrollEvent;
         focusable = true;
         clickable = true;
+        padding = Rect(3,3,3,3);
+        margins = Rect(2,2,2,2);
         acceleratorMap.add([
             ACTION_VIEW_HZOOM_1, ACTION_VIEW_HZOOM_IN, ACTION_VIEW_HZOOM_OUT, ACTION_VIEW_HZOOM_MAX, ACTION_VIEW_HZOOM_SEL,
             ACTION_VIEW_VZOOM_1, ACTION_VIEW_VZOOM_IN, ACTION_VIEW_VZOOM_OUT, ACTION_VIEW_VZOOM_MAX,
@@ -662,15 +664,24 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                                 exty1 = (nexty1 + y1) / 2;
                         }
                         if (exty0 < y0)
-                            buf.fillRect(Rect(x, exty0, x + 1, y0), 0xA040FF40);
+                            buf.fillRect(Rect(x, exty0, x + 1, y0), 0xE040FF40);
                         if (exty1 > y1)
-                            buf.fillRect(Rect(x, y1, x + 1, exty1), 0xA040FF40);
+                            buf.fillRect(Rect(x, y1, x + 1, exty1), 0xE040FF40);
                     }
                 }
                 if (x >= selstartx && x <= selendx)
                     buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xD00000FF);
                 if (x == cursorx)
                     buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0x40FFFFFF);
+            }
+            if (_file.marks.length) {
+                for (int i = 0; i < _file.marks.length; i++) {
+                    int markSample = _file.timeToFrame(_file.marks[i]);
+                    int x = (markSample / _hscale) - _scrollPos + _clientRect.left;
+                    if (x >= _clientRect.left && x < _clientRect.right) {
+                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xC0FF0000);
+                    }
+                }
             }
         }
         // draw y==0
@@ -716,8 +727,11 @@ class InstrEditorBody : VerticalLayout {
         switch(a.id) {
             case Actions.InstrumentCreateLoop:
                 WaveFile tmp = _wave.getSelectionUpsampled();
-                if (tmp)
+                if (tmp) {
+                    float[] zeroPhasePositions = tmp.findZeroPhasePositions();
+                    tmp.marks = zeroPhasePositions;
                     _loop.file = tmp;
+                }
                 return true;
             default:
                 break;

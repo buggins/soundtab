@@ -6,6 +6,9 @@ class WaveFile {
     int sampleRate;
     int frames;
     float[] data;
+
+    float[] marks;
+
     int timeToFrame(float time) {
         return cast(int)(time * sampleRate);
     }
@@ -53,6 +56,19 @@ class WaveFile {
         float s0 = getSample(index, channel);
         float s1 = getSample(index + 1, channel);
         return s0 * (1 - deltaTime) + s1 * deltaTime;
+    }
+
+    void getSamplesInterpolated(float frameMiddle, float step, float[] buf) {
+        int len = cast(int)buf.length;
+        float x = frameMiddle - (len / 2) * step;
+        for (int i = 0; i < len; i++) {
+            int index = cast(int)x;
+            float delta = x - index; // delta is 0..1
+            float s0 = getSample(index, 0);
+            float s1 = getSample(index + 1, 0);
+            buf.ptr[i] = s0 * (1 - delta) + s1 * delta;
+            x += step;
+        }
     }
 
     WaveFile getRange(int start, int end) {
@@ -119,9 +135,20 @@ class WaveFile {
             //    srcBuf[BATCH_SIZE - i * 4 - 4] = s2 * (1 - k) + sm * k;
             //}
             fft.fft(srcBuf, invBuf);
-            for (int i = BATCH_SIZE / 8; i <= BATCH_SIZE * 7 / 8; i++) {
+            for (int i = BATCH_SIZE / 8 - 5; i <= BATCH_SIZE * 7 / 8 + 5; i++) {
                 invBuf[i] = Complex!double(0,0);
             }
+            // smoother lowpass filter
+            /*
+            immutable int SMOOTH_DIST = BATCH_SIZE / 30;
+            for (int i = 1; i < SMOOTH_DIST; i++) {
+                float k = SMOOTH_DIST / i;
+                invBuf[BATCH_SIZE / 8 - i].re *= k;
+                invBuf[BATCH_SIZE / 8 - i].im *= k;
+                invBuf[BATCH_SIZE * 7 / 8 + i].re *= k;
+                invBuf[BATCH_SIZE * 7 / 8 + i].im *= k;
+            }
+            */
             ifft.inverseFft(invBuf, fftFrame);
             for (int i = overlap; i < BATCH_SIZE - overlap; i++) {
                 int index = x * 4 + i;
@@ -137,54 +164,90 @@ class WaveFile {
         import dlangui.core.logger;
 
         Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
-        float freqPosition = res.frameToTime(res.frames / 2);
-        float freqBigRange = res.calcLocalFrequency(freqPosition, 40);
-        float freqShortRange = res.calcLocalFrequency(freqPosition, freqBigRange / 4);
-        float freqShortestRange = res.calcLocalFrequency(freqPosition, freqBigRange / 2);
-        float freqShortestRange2 = res.calcLocalFrequency(freqPosition, freqBigRange);
-        Log.d("Frequencies: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-
-        float freqPosition0 = freqPosition - 4/freqBigRange;
-        float freqPosition1 = freqPosition + 4/freqBigRange;
-        float freqPosition2 = freqPosition - 2/freqBigRange;
-        float freqPosition3 = freqPosition + 2/freqBigRange;
-        float freqPosition4 = freqPosition - 0.5/freqBigRange;
-        float freqPosition5 = freqPosition + 0.5/freqBigRange;
-
-        freqBigRange = res.calcLocalFrequency(freqPosition0, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition0, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition0, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition0, freqBigRange);
-        Log.d("Frequencies at -4 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-        freqBigRange = res.calcLocalFrequency(freqPosition1, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition1, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition1, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition1, freqBigRange);
-        Log.d("Frequencies at +4 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-
-        freqBigRange = res.calcLocalFrequency(freqPosition2, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition2, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition2, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition2, freqBigRange);
-        Log.d("Frequencies at -2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-        freqBigRange = res.calcLocalFrequency(freqPosition3, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition3, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition3, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition3, freqBigRange);
-        Log.d("Frequencies at +2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-
-        freqBigRange = res.calcLocalFrequency(freqPosition4, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition4, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition4, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition4, freqBigRange);
-        Log.d("Frequencies at -1/2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
-        freqBigRange = res.calcLocalFrequency(freqPosition5, 40);
-        freqShortRange = res.calcLocalFrequency(freqPosition5, freqBigRange / 4);
-        freqShortestRange = res.calcLocalFrequency(freqPosition5, freqBigRange / 2);
-        freqShortestRange2 = res.calcLocalFrequency(freqPosition5, freqBigRange);
-        Log.d("Frequencies at +1/2 periods: ", freqBigRange, " ", freqShortRange, " ", freqShortestRange, " ", freqShortestRange2);
 
         return res;
+    }
+
+    float[] findZeroPhasePositions() {
+        import dlangui.core.logger;
+
+        float freqPosition = frameToTime(frames / 2);
+        float freqBigRange = calcLocalFrequency(freqPosition, 40);
+        float freqShortRange = calcLocalFrequency(freqPosition, freqBigRange / 4);
+        Log.d("Frequencies: ", freqBigRange, " ", freqShortRange);
+
+        freqBigRange = calcLocalFrequency(freqPosition, 40);
+        freqShortRange = calcLocalFrequency(freqPosition, freqBigRange / 4);
+
+        float zeroPhaseTime;
+        float amplitude;
+        //findNearPhase0(freqPosition, freqShortRange, 1, zeroPhaseTime, amplitude);
+        float zeroPhaseTime2;
+        float amplitude2;
+        float freq;
+        findNearPhase0FreqAutocorrection(freqPosition, freqShortRange, 1, zeroPhaseTime2, amplitude2, freq);
+        Log.d("Zero phase near ", freqPosition, " at freq ", freqShortRange, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " freq=", freq);
+        freqPosition = zeroPhaseTime2;
+
+
+        float initialPosition = freqPosition;
+        float initialFreq = freq;
+        float[] zpositions;
+        float[] zpositionsBefore;
+        zpositions ~= freqPosition;
+
+        float maxtime = frames / cast(float)sampleRate - 2/initialFreq;
+        float mintime = 2/initialFreq;
+
+
+        Log.d("Scanning time range ", initialPosition, " .. ", maxtime);
+        freqPosition = initialPosition;
+        freq = initialFreq;
+        float step = 1/freq;
+        freqPosition += step;
+        for (int i = 0; i < 10000; i++) {
+            if (freqPosition > maxtime)
+                break;
+            float oldFreq = freq;
+            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 1, zeroPhaseTime2, amplitude2, freq);
+            Log.d("Zero phase near ", freqPosition, " at freq ", oldFreq, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " step=", step, " freq=", freq);
+            step = 1/freq;
+            freqPosition = zeroPhaseTime2;
+            zpositions ~= freqPosition;
+            freqPosition += step;
+        }
+        Log.d("Scanning time range ", mintime, " .. ", initialPosition);
+        freqPosition = initialPosition;
+        freq = initialFreq;
+        step = 1/freq;
+        freqPosition -= step;
+        for (int i = 0; i < 10000; i++) {
+            if (freqPosition < mintime)
+                break;
+            float oldFreq = freq;
+            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 1, zeroPhaseTime2, amplitude2, freq);
+            Log.d("Zero phase near ", freqPosition, " at freq ", oldFreq, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " step=", step, " freq=", freq);
+            step = 1/freq;
+            freqPosition = zeroPhaseTime2;
+            zpositionsBefore ~= freqPosition;
+            freqPosition -= step;
+        }
+
+        //Log.d("zpositions: ", zpositions, "   before: ", zpositionsBefore);
+
+        float[] zpositionsAll;
+        for (int i = cast(int)zpositionsBefore.length - 1; i >= 0; i--)
+            zpositionsAll ~= zpositionsBefore[i];
+        zpositionsAll ~= zpositions;
+
+        float[] freqs;
+        for (int i = 1; i < zpositionsAll.length; i++) {
+            freqs ~= 1 / (zpositionsAll[i] - zpositionsAll[i - 1]);
+        }
+
+        //Log.d("zpositionsAll: ", zpositionsAll);
+        Log.d("freqs: ", freqs);
+        return zpositionsAll;
     }
 
     float calcLocalFrequency(float position, float minFreq) {
@@ -233,6 +296,79 @@ class WaveFile {
             return 1 / period;
         return 0;
     }
+
+    void findNearPhase0FreqAutocorrection(float positionTimeSeconds, float freqHerz, int sign, ref float zeroPhaseTimePosSeconds, ref float amplitude, ref float newFreq) {
+        import dlangui.core.logger;
+        findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
+        float autocorrelatedFrequency = calcLocalFrequency(zeroPhaseTimePosSeconds, freqHerz / 2);
+        //Log.d("Initial phase detection: freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude, "  autocorrFreq=", autocorrelatedFrequency);
+        if (autocorrelatedFrequency >= freqHerz * 0.8 && autocorrelatedFrequency <= freqHerz * 1.2) {
+            freqHerz = autocorrelatedFrequency;
+            positionTimeSeconds = zeroPhaseTimePosSeconds;
+            findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
+            //Log.d("    position updated (1) for freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude);
+        }
+        positionTimeSeconds = zeroPhaseTimePosSeconds;
+        // calculate again at zero phase position
+        findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
+        //Log.d("    position updated (2) for freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude);
+        newFreq = freqHerz;
+    }
+
+    void findNearPhase0(float positionTimeSeconds, float freqHerz, int sign, ref float zeroPhaseTimePosSeconds, ref float amplitude) {
+        import std.math : sqrt, atan2, PI;
+        float[256] buf;
+        float x = positionTimeSeconds * sampleRate;
+        float periodSamples = sampleRate / freqHerz;
+        // get interpolated one period of freq
+        getSamplesInterpolated(x, periodSamples / 256, buf[0..$]);
+        float sumSin = 0;
+        float sumCos = 0;
+        float sumSin2 = 0;
+        float sumCos2 = 0;
+        //float stepWidth = periodSamples / 256;
+        for (int i = 0; i < 256; i++) {
+            sumSin += sign * buf.ptr[i] * SIN_TABLE_256.ptr[i];
+            sumCos += sign * buf.ptr[i] * COS_TABLE_256.ptr[i];
+            sumSin2 += SIN_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
+            sumCos2 += COS_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
+        }
+        sumSin /= 256;
+        sumCos /= 256;
+        //sumSin /= (periodSamples * periodSamples);
+        //sumCos /= (periodSamples * periodSamples);
+        // calc amplitude
+        amplitude = sqrt(sumSin * sumSin + sumCos * sumCos); // / periodSamples;
+        // normalize
+        //sumSin /= amplitude;
+        //sumCos /= amplitude;
+        float phase = atan2(sumSin, sumCos) - PI/2;
+        if (phase < -PI)
+            phase += PI * 2;
+        float phase2 = atan2(sumSin2, sumCos2) - PI/2;
+        float zeroPhaseX = x + periodSamples * phase / (2 * PI);
+        zeroPhaseTimePosSeconds = zeroPhaseX / sampleRate;
+    }
+
+    float sinAmpAt(float positionTimeSeconds, float freqHerz, int sign) {
+        import std.math : sqrt, atan2, PI;
+        float[256] buf;
+        float x = positionTimeSeconds * sampleRate;
+        float periodSamples = sampleRate / freqHerz;
+        // get interpolated one period of freq
+        getSamplesInterpolated(x, periodSamples / 256, buf[0..$]);
+        float sumSin = 0;
+        //float stepWidth = periodSamples / 256;
+        for (int i = 0; i < 256; i++) {
+            sumSin += sign * buf.ptr[i] * SIN_TABLE_256.ptr[i];
+        }
+        sumSin /= 256;
+        //sumSin /= (periodSamples * periodSamples);
+        //sumCos /= (periodSamples * periodSamples);
+        // calc amplitude
+        //float amplitude = sqrt(sumSin * sumSin); // / periodSamples;
+        return sumSin; //amplitude;
+    }
 }
 
 // calc parabola coefficients for points (x1, y1), (x1 + 1, y2), (x1 + 2, y3)
@@ -261,4 +397,34 @@ void correlation(float[] a, float[] b, float[] res) {
             sum += a[i] * b[i + diff];
         res[diff] = sum;
     }
+}
+
+// generate sin table with phase 0 at middle point
+float[] generateSinTable(int len) {
+    float[] res = new float[len];
+    import std.math : sin, cos, PI;
+    for (int i = 0; i < len; i++) {
+        double x = (i - len / 2) * 2 * PI / len;
+        res[i] = sin(x);
+    }
+    return res;
+}
+
+// generate sin table with phase 0 at middle point
+float[] generateCosTable(int len) {
+    float[] res = new float[len];
+    import std.math : sin, cos, PI;
+    for (int i = 0; i < len; i++) {
+        double x = (i - len / 2) * 2 * PI / len;
+        res[i] = cos(x);
+    }
+    return res;
+}
+
+__gshared float[] SIN_TABLE_256;
+__gshared float[] COS_TABLE_256;
+
+__gshared static this() {
+    SIN_TABLE_256 = generateSinTable(256);
+    COS_TABLE_256 = generateCosTable(256);
 }
