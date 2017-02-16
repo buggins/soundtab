@@ -9,6 +9,70 @@ class WaveFile {
 
     float[] marks;
 
+    float middleFrequency = 0;
+    float[] frequencies; // multipliers relative to middle frequency, to get real frequency, use frequency[i]*middleFrequency
+    float minFrequencyK = 0;
+    float maxFrequencyK = 0;
+
+    void setMarks(float[] _marks) {
+        marks = _marks;
+    }
+
+    void generateFreqienciesFromMarks() {
+        frequencies = null;
+        middleFrequency = 0;
+        minFrequencyK = 0;
+        maxFrequencyK = 0;
+        if (!data.length || marks.length < 3)
+            return;
+        double s = 0;
+        // calc avg frequency
+        double minFreq = 0;
+        double maxFreq = 0;
+        for (int i = 1; i < marks.length; i++) {
+            double period = marks[i] - marks[i - 1];
+            double freq = 1 / period;
+            if (i == 1 || minFreq > freq)
+                minFreq = freq;
+            if (i == 1 || maxFreq < freq)
+                maxFreq = freq;
+        }
+        middleFrequency = (maxFreq + minFreq) / 2;
+        minFrequencyK = minFreq / middleFrequency;
+        maxFrequencyK = maxFreq / middleFrequency;
+        frequencies.length = data.length;
+        int firstFilled = 0;
+        int lastFilled = 0;
+        for (int i = 1; i + 1 < marks.length; i++) {
+            float prevFreq = 1 / (marks[i] - marks[i - 1]);
+            float nextFreq = 1 / (marks[i + 1] - marks[i]);
+            int prevPeriodMiddle = timeToFrame((marks[i] + marks[i - 1]) / 2);
+            int nextPeriodMiddle = timeToFrame((marks[i + 1] + marks[i]) / 2);
+            float prevFreqK = prevFreq / middleFrequency;
+            float nextFreqK = nextFreq / middleFrequency;
+            // interpolate coeffs
+            for (int j = prevPeriodMiddle; j < nextPeriodMiddle; j++) {
+                frequencies[j] = prevFreqK + (nextFreqK - prevFreqK) * (j - prevPeriodMiddle) / (nextPeriodMiddle / prevPeriodMiddle);
+            }
+            if (!firstFilled)
+                firstFilled = prevPeriodMiddle;
+            lastFilled = nextPeriodMiddle - 1;
+        }
+        frequencies[0 .. firstFilled] = frequencies[firstFilled];
+        frequencies[lastFilled .. $] = frequencies[lastFilled - 1];
+    }
+
+    void removeDcOffset(float minTime, float maxTime) {
+        int startFrame = timeToFrame(minTime);
+        int endFrame = timeToFrame(maxTime);
+        double s = 0;
+        for (int i = startFrame; i < endFrame; i++)
+            s += data.ptr[i];
+        s /= (endFrame - startFrame);
+        for (int i = 0; i < data.length; i++)
+            data.ptr[i] -= s;
+    }
+
     int timeToFrame(float time) {
         return cast(int)(time * sampleRate);
     }
@@ -135,7 +199,7 @@ class WaveFile {
             //    srcBuf[BATCH_SIZE - i * 4 - 4] = s2 * (1 - k) + sm * k;
             //}
             fft.fft(srcBuf, invBuf);
-            for (int i = BATCH_SIZE / 8 - 5; i <= BATCH_SIZE * 7 / 8 + 5; i++) {
+            for (int i = BATCH_SIZE / 8 - 5; i <= BATCH_SIZE * 7 / 8 + 5 + 1; i++) {
                 invBuf[i] = Complex!double(0,0);
             }
             // smoother lowpass filter
@@ -196,8 +260,8 @@ class WaveFile {
         float[] zpositionsBefore;
         zpositions ~= freqPosition;
 
-        float maxtime = frames / cast(float)sampleRate - 2/initialFreq;
-        float mintime = 2/initialFreq;
+        float maxtime = frames / cast(float)sampleRate - 1.5f / initialFreq;
+        float mintime = 1.5f / initialFreq;
 
 
         Log.d("Scanning time range ", initialPosition, " .. ", maxtime);

@@ -194,6 +194,11 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         _vscale = 1;
         if (_file) {
             _hscale = _file.frames / (_clientRect.width ? _clientRect.width : 1);
+            _vscale = visibleYRange().amplitude;
+            if (_vscale > 0)
+                _vscale = 1 / _vscale;
+            else
+                _vscale = 1;
         }
         updateView();
         invalidate();
@@ -679,7 +684,7 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                     int markSample = _file.timeToFrame(_file.marks[i]);
                     int x = (markSample / _hscale) - _scrollPos + _clientRect.left;
                     if (x >= _clientRect.left && x < _clientRect.right) {
-                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xC0FF0000);
+                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xA0FF0000);
                     }
                 }
             }
@@ -711,7 +716,7 @@ class InstrEditorBody : VerticalLayout {
         _mixer = mixer;
         layoutWidth = FILL_PARENT;
         layoutHeight = FILL_PARENT;
-        backgroundColor(0x102010);
+        backgroundColor(0x000000);
         _wave = new SourceWaveFileWidget(_mixer);
         addChild(_wave);
         _loop = new LoopWaveWidget(_mixer);
@@ -729,7 +734,11 @@ class InstrEditorBody : VerticalLayout {
                 WaveFile tmp = _wave.getSelectionUpsampled();
                 if (tmp) {
                     float[] zeroPhasePositions = tmp.findZeroPhasePositions();
-                    tmp.marks = zeroPhasePositions;
+                    tmp.setMarks(zeroPhasePositions);
+                    if (zeroPhasePositions.length > 1) {
+                        tmp.removeDcOffset(zeroPhasePositions[0], zeroPhasePositions[$-1]);
+                        tmp.generateFreqienciesFromMarks();
+                    }
                     _loop.file = tmp;
                 }
                 return true;
