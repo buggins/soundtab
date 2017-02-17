@@ -5,6 +5,7 @@ struct PeriodInfo {
     float periodTime = 0;
     float ampPlus = 0;
     float ampMinus = 0;
+    float energy = 0;
     @property float middleTime() {
         return startTime + periodTime / 2;
     }
@@ -73,58 +74,77 @@ class WaveFile {
         }
     }
 
+    immutable bool sqEnergy = true;
     float[] amplitudes;
     void fillAmplitudesFromPeriods() {
         amplitudes = null;
         if (periods.length > 1) {
             float[] ampPlus = new float[frames];
             float[] ampMinus = new float[frames];
+            float[] energy = new float[frames];
             int prevPeriodMiddleFrame = 0;
             float prevPeriodAmpPlus = periods[0].ampPlus;
             float prevPeriodAmpMinus = periods[0].ampMinus;
+            float prevPeriodEnergy = periods[0].energy;
             float avgPeriod = 0;
             for (int i = 0; i < periods.length; i++) {
                 avgPeriod += periods[i].periodTime;
                 int middleFrame = timeToFrame(periods[i].middleTime);
                 float currentAmpPlus = periods[i].ampPlus;
                 float currentAmpMinus = periods[i].ampMinus;
+                float currentEnergy = periods[i].energy;
                 int frameLen = middleFrame - prevPeriodMiddleFrame;
                 for (int j = 0; j < frameLen; j++) {
                     ampPlus[prevPeriodMiddleFrame + j] = prevPeriodAmpPlus + (currentAmpPlus - prevPeriodAmpPlus) * j / frameLen;
                     ampMinus[prevPeriodMiddleFrame + j] = prevPeriodAmpMinus + (currentAmpMinus - prevPeriodAmpMinus) * j / frameLen;
+                    energy[prevPeriodMiddleFrame + j] = prevPeriodEnergy + (currentEnergy - prevPeriodEnergy) * j / frameLen;
                 }
                 prevPeriodMiddleFrame = middleFrame;
                 prevPeriodAmpPlus = currentAmpPlus;
                 prevPeriodAmpMinus = currentAmpMinus;
+                prevPeriodEnergy = currentEnergy;
             }
             avgPeriod /= periods.length;
             // fill till end of wave
             for (int i = prevPeriodMiddleFrame; i < frames; i++) {
                 ampPlus[i] = prevPeriodAmpPlus;
                 ampMinus[i] = prevPeriodAmpMinus;
+                energy[i] = prevPeriodEnergy;
             }
-            int lowpassFilterSize = cast(int)(2 * (1/avgPeriod)) | 1;
+            int lowpassFilterSize = cast(int)(10 * (1/avgPeriod)) | 1;
             float[] lowpassFirFilter = blackmanWindow(lowpassFilterSize);
             float[] ampPlusFiltered = new float[frames];
             float[] ampMinusFiltered = new float[frames];
+            float[] energyFiltered = new float[frames];
             applyFirFilter(ampPlus, ampPlusFiltered, lowpassFirFilter);
             applyFirFilter(ampMinus, ampMinusFiltered, lowpassFirFilter);
+            applyFirFilter(energy, energyFiltered, lowpassFirFilter);
             amplitudes = new float[frames];
             float maxAmpPlus = ampPlusFiltered[0];
             float maxAmpMinus = ampMinusFiltered[0];
+            float maxEnergy = energyFiltered[0];
             for (int i = 1; i < frames; i++) {
                 if (maxAmpPlus < ampPlusFiltered[i])
                     maxAmpPlus = ampPlusFiltered[i];
                 if (maxAmpMinus < ampMinusFiltered[i])
                     maxAmpMinus = ampMinusFiltered[i];
+                if (maxEnergy < energyFiltered[i])
+                    maxEnergy = energyFiltered[i];
             }
-            if (maxAmpPlus > maxAmpMinus)
-                amplitudes = ampPlusFiltered;
-            else
-                amplitudes = ampMinusFiltered;
-            //for (int i = 0; i < frames; i++) {
-            //    amplitudes[i] = (ampPlusFiltered[i] + ampMinusFiltered[i]);
-            //}
+            float maxAmp = maxAmpPlus > maxAmpMinus ? maxAmpPlus : maxAmpMinus;
+            float kPlus = 0;
+            float kMinus = 0;
+            float kEnergy = 0;
+            //if (maxAmpPlus > maxAmpMinus)
+            //    amplitudes = ampPlusFiltered;
+            //else
+            //    amplitudes = ampMinusFiltered;
+            kPlus = maxAmpPlus / (maxAmpPlus + maxAmpMinus);
+            kMinus = maxAmpMinus / (maxAmpPlus + maxAmpMinus);
+            for (int i = 0; i < frames; i++) {
+                amplitudes[i] = kPlus * ampPlusFiltered[i] + kMinus * ampMinusFiltered[i] + kEnergy * maxAmp / maxEnergy;
+                //amplitudes[i] = energyFiltered[i] * maxAmp / maxEnergy;
+            }
         }
     }
 
@@ -137,26 +157,66 @@ class WaveFile {
     }
 
     void correctMarksForNormalizedAmplitude() {
+        for (int i = 1; i + 1 < marks.length; i++) {
+            float period = (marks[i + 1] - marks[i - 1]) / 2;
+            float freq = 1 / period;
+            float zeroPhaseTimePosSeconds;
+            float amp;
+            findNearPhase0(marks[i], freq, 1, zeroPhaseTimePosSeconds, amp);
+            float diff = zeroPhaseTimePosSeconds - marks[i];
+            if (diff < period / 5 && diff > -period / 5)
+                marks[i] = zeroPhaseTimePosSeconds;
+        }
     }
 
     void fillPeriodInfo(ref PeriodInfo period, float start, float end) {
+        import std.math : sqrt;
         period.startTime = start;
         period.periodTime = end - start;
         int startSample = timeToFrame(start);
         int endSample = timeToFrame(end);
         float maxValue = 0;
         float minValue = 0;
+        float energy = 0;
+        float energyDiv = 0;
         for (int i = startSample; i < endSample; i++) {
             if (i >= 0 && i < frames) {
                 float sample = data.ptr[i * channels];
+                float absSample = sample < 0 ? -sample : sample;
                 if (maxValue < sample)
                     maxValue = sample;
                 if (minValue > sample)
                     minValue = sample;
+                if (i == startSample) {
+                    float part = start * sampleRate - startSample;
+                    part = 1 - part;
+                    if (sqEnergy)
+                        energy += absSample * absSample * part * part;
+                    else
+                        energy += absSample * part;
+                    energyDiv = energyDiv + part;
+                } else if (i == endSample) {
+                    float part = end * sampleRate - endSample;
+                    if (sqEnergy)
+                        energy += absSample * absSample * part * part;
+                    else
+                        energy += absSample * part;
+                    energyDiv = energyDiv + part;
+                } else {
+                    if (sqEnergy)
+                        energy += absSample * absSample;
+                    else
+                        energy += absSample;
+                    energyDiv = energyDiv + 1;
+                }
             }
         }
+        energy = energy / energyDiv;
+        if (sqEnergy)
+            energy = sqrt(energy);
         period.ampPlus = maxValue;
         period.ampMinus = -minValue;
+        period.energy = energy;
     }
 
     void generateFrequenciesFromMarks() {
@@ -166,10 +226,45 @@ class WaveFile {
         maxFrequencyK = 0;
         if (!data.length || marks.length < 3)
             return;
+        frequencies.length = data.length;
         double s = 0;
         // calc avg frequency
-        double minFreq = 0;
-        double maxFreq = 0;
+        float lastFreq = 1 / (marks[1] - marks[0]);
+        double minFreq = lastFreq;
+        double maxFreq = lastFreq;
+        int lastFreqPos = 0;
+        for (int i = 1; i < marks.length; i++) {
+            float freq = 1 / (marks[i] - marks[i - 1]);
+            if (minFreq > freq)
+                minFreq = freq;
+            if (maxFreq < freq)
+                maxFreq = freq;
+            s += freq;
+            int pos = timeToFrame((marks[i] + marks[i - 1]) / 2);
+            for (int j = lastFreqPos; j < pos; j++) {
+                float f = lastFreq + (freq - lastFreq) * (j - lastFreqPos) / (pos - lastFreqPos);
+                frequencies[j] = f;
+            }
+            lastFreq = freq;
+            lastFreqPos = pos;
+        }
+        for (int j = lastFreqPos; j < frequencies.length; j++) {
+            frequencies[j] = lastFreq;
+        }
+        middleFrequency = s / (marks.length - 1);
+
+
+
+        //int lowpassFilterSize = 3 * timeToFrame(1/middleFrequency) | 1;
+        //float[] lowpassFirFilter = blackmanWindow(lowpassFilterSize);
+        //float[] frequenciesFiltered = new float[frames];
+        //applyFirFilter(frequencies, frequenciesFiltered, lowpassFirFilter);
+        //frequencies = frequenciesFiltered;
+
+
+
+        /*
+
         for (int i = 1; i < marks.length; i++) {
             double period = marks[i] - marks[i - 1];
             double freq = 1 / period;
@@ -181,7 +276,6 @@ class WaveFile {
         middleFrequency = (maxFreq + minFreq) / 2;
         minFrequencyK = minFreq / middleFrequency;
         maxFrequencyK = maxFreq / middleFrequency;
-        frequencies.length = data.length;
         int firstFilled = 0;
         int lastFilled = 0;
         for (int i = 1; i + 1 < marks.length; i++) {
@@ -201,6 +295,7 @@ class WaveFile {
         }
         frequencies[0 .. firstFilled] = frequencies[firstFilled];
         frequencies[lastFilled .. $] = frequencies[lastFilled - 1];
+        */
     }
 
     void removeDcOffset(float minTime, float maxTime) {
@@ -429,10 +524,10 @@ class WaveFile {
         // till end - just use fixed freq
         maxtime = frames / cast(float)sampleRate - 0.1f / initialFreq;
         for (int i = 0; i < 3; i++) {
-            freqPosition += step;
             if (freqPosition > maxtime)
                 break;
             zpositions ~= freqPosition;
+            freqPosition += step;
         }
         Log.d("Scanning time range ", mintime, " .. ", initialPosition);
         freqPosition = initialPosition;

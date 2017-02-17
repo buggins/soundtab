@@ -173,6 +173,13 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     }
     @property Mp3Player player() { return _player; }
 
+    /// override to allow extra views
+    int getExtraViewsHeight(int parentHeight) { return 0; }
+    /// override to allow extra views
+    void layoutExtraViews(Rect rc) { }
+    /// override to allow extra views
+    void drawExtraViews(DrawBuf buf) {}
+
     void updateZoomCache() {
         if (!_file || _zoomCacheScale == _hscale || _hscale <= 16)
             return;
@@ -482,9 +489,10 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     override void measure(int parentWidth, int parentHeight) {
         _hruler.measure(parentWidth, parentHeight);
         int hRulerHeight = _hruler.measuredHeight;
+        int extraHeight = getExtraViewsHeight(parentHeight);
         _hScroll.measure(parentWidth, parentHeight);
         int hScrollHeight = _hScroll.measuredHeight;
-        measuredContent(parentWidth, parentHeight, 0, 200 + hRulerHeight + hScrollHeight);
+        measuredContent(parentWidth, parentHeight, 0, 200 + hRulerHeight + hScrollHeight + extraHeight);
     }
 
     /// Set widget rectangle to specified value and layout widget contents. (Step 2 of two phase layout).
@@ -509,8 +517,15 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         hrulerRc.bottom = hscrollRc.top;
         hrulerRc.top = hrulerRc.bottom - hRulerHeight;
         _hruler.layout(hrulerRc);
+        int extraHeight = getExtraViewsHeight(rc.height);
+        if (extraHeight) {
+            Rect extraRc = rc;
+            extraRc.bottom = hrulerRc.top;
+            extraRc.top = extraRc.bottom - extraHeight;
+            layoutExtraViews(extraRc);
+        }
         _clientRect = rc;
-        _clientRect.bottom = hrulerRc.top - 1;
+        _clientRect.bottom = hrulerRc.top - 1 - extraHeight;
         _clientRect.top += 1;
         updateView();
     }
@@ -636,61 +651,64 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             return;
         super.onDraw(buf);
         _needDraw = false;
-        auto saver = ClipRectSaver(buf, _clientRect, alpha);
-        // erase background
-        buf.fillRect(_clientRect, 0x102010);
-        int my = _clientRect.middley;
-        int dy = _clientRect.height / 2;
-        // draw wave
-        if (_file) {
-            int cursorx = _cursorPos / _hscale - _scrollPos;
-            int selstartx = _selStart / _hscale - _scrollPos;
-            int selendx = _selEnd / _hscale - _scrollPos;
-            for (int i = 0; i < _clientRect.width; i++) {
-                int x = _clientRect.left + i;
-                int y0, y1;
-                if (getDisplayPos(i, y0, y1)) {
-                    buf.fillRect(Rect(x, y0, x + 1, y1), 0x4020C020);
-                    if (_hscale <= 10) {
-                        int exty0 = y0;
-                        int exty1 = y1;
-                        int prevy0, prevy1;
-                        int nexty0, nexty1;
-                        if (getDisplayPos(i - 1, prevy0, prevy1)) {
-                            if (prevy0 < exty0)
-                                exty0 = (prevy0 + y0) / 2;
-                            if (prevy1 > exty1)
-                                exty1 = (prevy1 + y1) / 2;
+        {
+            auto saver = ClipRectSaver(buf, _clientRect, alpha);
+            // erase background
+            buf.fillRect(_clientRect, 0x102010);
+            int my = _clientRect.middley;
+            int dy = _clientRect.height / 2;
+            // draw wave
+            if (_file) {
+                int cursorx = _cursorPos / _hscale - _scrollPos;
+                int selstartx = _selStart / _hscale - _scrollPos;
+                int selendx = _selEnd / _hscale - _scrollPos;
+                for (int i = 0; i < _clientRect.width; i++) {
+                    int x = _clientRect.left + i;
+                    int y0, y1;
+                    if (getDisplayPos(i, y0, y1)) {
+                        buf.fillRect(Rect(x, y0, x + 1, y1), 0x4020C020);
+                        if (_hscale <= 10) {
+                            int exty0 = y0;
+                            int exty1 = y1;
+                            int prevy0, prevy1;
+                            int nexty0, nexty1;
+                            if (getDisplayPos(i - 1, prevy0, prevy1)) {
+                                if (prevy0 < exty0)
+                                    exty0 = (prevy0 + y0) / 2;
+                                if (prevy1 > exty1)
+                                    exty1 = (prevy1 + y1) / 2;
+                            }
+                            if (getDisplayPos(i + 1, nexty0, nexty1)) {
+                                if (nexty0 < exty0)
+                                    exty0 = (nexty0 + y0) / 2;
+                                if (nexty1 > exty1)
+                                    exty1 = (nexty1 + y1) / 2;
+                            }
+                            if (exty0 < y0)
+                                buf.fillRect(Rect(x, exty0, x + 1, y0), 0xE040FF40);
+                            if (exty1 > y1)
+                                buf.fillRect(Rect(x, y1, x + 1, exty1), 0xE040FF40);
                         }
-                        if (getDisplayPos(i + 1, nexty0, nexty1)) {
-                            if (nexty0 < exty0)
-                                exty0 = (nexty0 + y0) / 2;
-                            if (nexty1 > exty1)
-                                exty1 = (nexty1 + y1) / 2;
+                    }
+                    if (x >= selstartx && x <= selendx)
+                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xD00000FF);
+                    if (x == cursorx)
+                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0x40FFFFFF);
+                }
+                if (_file.marks.length) {
+                    for (int i = 0; i < _file.marks.length; i++) {
+                        int markSample = _file.timeToFrame(_file.marks[i]);
+                        int x = (markSample / _hscale) - _scrollPos + _clientRect.left;
+                        if (x >= _clientRect.left && x < _clientRect.right) {
+                            buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xA0FF0000);
                         }
-                        if (exty0 < y0)
-                            buf.fillRect(Rect(x, exty0, x + 1, y0), 0xE040FF40);
-                        if (exty1 > y1)
-                            buf.fillRect(Rect(x, y1, x + 1, exty1), 0xE040FF40);
                     }
                 }
-                if (x >= selstartx && x <= selendx)
-                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xD00000FF);
-                if (x == cursorx)
-                    buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0x40FFFFFF);
             }
-            if (_file.marks.length) {
-                for (int i = 0; i < _file.marks.length; i++) {
-                    int markSample = _file.timeToFrame(_file.marks[i]);
-                    int x = (markSample / _hscale) - _scrollPos + _clientRect.left;
-                    if (x >= _clientRect.left && x < _clientRect.right) {
-                        buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xA0FF0000);
-                    }
-                }
-            }
+            // draw y==0
+            buf.fillRect(Rect(_clientRect.left, my, _clientRect.right, my + 1), 0x80606030);
         }
-        // draw y==0
-        buf.fillRect(Rect(_clientRect.left, my, _clientRect.right, my + 1), 0x80606030);
+        drawExtraViews(buf);
     }
 
 }
@@ -702,9 +720,90 @@ class SourceWaveFileWidget : WaveFileWidget {
 }
 
 class LoopWaveWidget : WaveFileWidget {
+    protected Rect _ampRect;
+    protected Rect _freqRect;
+    protected bool _hasAmps;
+    protected bool _hasFreqs;
+    protected float _minAmp = 0;
+    protected float _maxAmp = 0;
+    protected float _minFreq = 0;
+    protected float _maxFreq = 0;
     this(Mixer mixer) {
         super(mixer);
     }
+    @property override void file(WaveFile f) { 
+        super.file(f);
+        if (_file && _file.amplitudes.length == _file.frames) {
+            _minAmp = _maxAmp = _file.amplitudes[0];
+            foreach(v; _file.amplitudes) {
+                if (_minAmp > v)
+                    _minAmp = v;
+                if (_maxAmp < v)
+                    _maxAmp = v;
+            }
+            _hasAmps = _maxAmp > _minAmp;
+        }
+        if (_file && _file.frequencies.length == _file.frames) {
+            _minFreq = _maxFreq = _file.frequencies[0];
+            foreach(v; _file.frequencies) {
+                if (_minFreq > v)
+                    _minFreq = v;
+                if (_maxFreq < v)
+                    _maxFreq = v;
+            }
+            _hasFreqs = _maxFreq > _minFreq;
+        }
+    }
+
+    /// override to allow extra views
+    override int getExtraViewsHeight(int parentHeight) {
+        int h = 0;
+        if (_hasAmps) {
+            h += 32;
+        }
+        if (_hasFreqs) {
+            h += 32;
+        }
+        return h;
+    }
+    /// override to allow extra views
+    override void layoutExtraViews(Rect rc) {
+        _ampRect = rc;
+        _freqRect = rc;
+        if (_hasAmps && _hasFreqs) {
+            _ampRect.bottom = _freqRect.top = rc.middley;
+        }
+    }
+
+    protected void drawExtraArray(DrawBuf buf, Rect rc, float[] data, float minValue, float maxValue, string title, uint bgColor = 0, uint foreColor = 0x808080) {
+        auto saver = ClipRectSaver(buf, rc, alpha);
+        // erase background
+        buf.fillRect(rc, bgColor);
+        buf.fillRect(Rect(rc.left, rc.top, rc.right, rc.top + 1), 0x404040);
+        for (int i = 0; i < rc.width; i++) {
+            int index = (_scrollPos + i) * _hscale;
+            int x = rc.left + i;
+            if (index < data.length) {
+                float value = data[index];
+                int y = cast(int)(rc.bottom - rc.height * (value - minValue) / (maxValue - minValue));
+                buf.fillRect(Rect(x, y, x + 1, rc.bottom), foreColor);
+            }
+        }
+        import std.format;
+        import std.utf;
+        font.drawText(buf, rc.left + 2, rc.top + 2, "%s: min=%f max=%f".format(title, minValue, maxValue).toUTF32, 0xFFFFFF);
+    }
+
+    /// override to allow extra views
+    override void drawExtraViews(DrawBuf buf) {
+        if (_hasAmps) {
+            drawExtraArray(buf, _ampRect, _file.amplitudes, _minAmp, _maxAmp, "Amplitude: ", 0x202000, 0x604000);
+        }
+        if (_hasFreqs) {
+            drawExtraArray(buf, _freqRect, _file.frequencies, _minFreq, _maxFreq, "Frequency: ", 0x002000, 0x0000C0);
+        }
+    }
+
 }
 
 class InstrEditorBody : VerticalLayout {
@@ -735,7 +834,7 @@ class InstrEditorBody : VerticalLayout {
                 if (tmp) {
                     float baseFrequency = tmp.calcBaseFrequency();
                     int lowpassFilterSize = tmp.timeToFrame((1/baseFrequency) / 16) | 1;
-                    int highpassFilterSize = tmp.timeToFrame((1/baseFrequency) * 2) | 1;
+                    int highpassFilterSize = tmp.timeToFrame((1/baseFrequency) * 1.5) | 1;
                     float[] lowpassFirFilter = blackmanWindow(lowpassFilterSize);
                     float[] highpassFirFilter = blackmanWindow(highpassFilterSize); //makeLowpassBlackmanFirFilter(highpassFilterSize);
                     WaveFile lowpass = tmp.firFilter(lowpassFirFilter);
@@ -753,6 +852,7 @@ class InstrEditorBody : VerticalLayout {
                     highpass.fillAmplitudesFromPeriods();
                     highpass.normalizeAmplitude();
                     highpass.correctMarksForNormalizedAmplitude();
+                    highpass.generateFrequenciesFromMarks();
                     if (zeroPhasePositionsNormal.length > 1) {
                         tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
                         tmp.generateFrequenciesFromMarks();
