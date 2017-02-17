@@ -733,13 +733,33 @@ class InstrEditorBody : VerticalLayout {
             case Actions.InstrumentCreateLoop:
                 WaveFile tmp = _wave.getSelectionUpsampled();
                 if (tmp) {
-                    float[] zeroPhasePositions = tmp.findZeroPhasePositions();
-                    tmp.setMarks(zeroPhasePositions);
-                    if (zeroPhasePositions.length > 1) {
-                        tmp.removeDcOffset(zeroPhasePositions[0], zeroPhasePositions[$-1]);
-                        tmp.generateFreqienciesFromMarks();
+                    float baseFrequency = tmp.calcBaseFrequency();
+                    int lowpassFilterSize = tmp.timeToFrame((1/baseFrequency) / 16) | 1;
+                    int highpassFilterSize = tmp.timeToFrame((1/baseFrequency) * 2) | 1;
+                    float[] lowpassFirFilter = blackmanWindow(lowpassFilterSize);
+                    float[] highpassFirFilter = blackmanWindow(highpassFilterSize); //makeLowpassBlackmanFirFilter(highpassFilterSize);
+                    WaveFile lowpass = tmp.firFilter(lowpassFirFilter);
+                    WaveFile highpass = lowpass.firFilterInverse(highpassFirFilter);
+                    float[] zeroPhasePositionsLowpass = lowpass.findZeroPhasePositions();
+                    float[] zeroPhasePositionsHighpass = highpass.findZeroPhasePositions();
+                    float[] zeroPhasePositionsNormal = tmp.findZeroPhasePositions();
+                    Log.d("Zero phase positions for lowpass filtered data: ", zeroPhasePositionsLowpass);
+                    Log.d("Zero phase positions for lowpass+highpass filtered data: ", zeroPhasePositionsHighpass);
+                    Log.d("Zero phase positions for non filtered data: ", zeroPhasePositionsNormal);
+                    tmp.setMarks(zeroPhasePositionsHighpass);
+                    lowpass.setMarks(zeroPhasePositionsHighpass);
+                    highpass.setMarks(zeroPhasePositionsHighpass);
+                    highpass.fillPeriodsFromMarks();
+                    highpass.fillAmplitudesFromPeriods();
+                    highpass.normalizeAmplitude();
+                    highpass.correctMarksForNormalizedAmplitude();
+                    if (zeroPhasePositionsNormal.length > 1) {
+                        tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
+                        tmp.generateFrequenciesFromMarks();
                     }
-                    _loop.file = tmp;
+                    //_loop.file = lowpass;
+                    _loop.file = highpass;
+                    //_loop.file = tmp;
                 }
                 return true;
             default:

@@ -1,5 +1,18 @@
 module soundtab.audio.wavefile;
 
+struct PeriodInfo {
+    float startTime = 0;
+    float periodTime = 0;
+    float ampPlus = 0;
+    float ampMinus = 0;
+    @property float middleTime() {
+        return startTime + periodTime / 2;
+    }
+    @property float endTime() {
+        return startTime + periodTime;
+    }
+}
+
 class WaveFile {
     string filename;
     int channels;
@@ -9,16 +22,144 @@ class WaveFile {
 
     float[] marks;
 
+    PeriodInfo[] periods;
+
     float middleFrequency = 0;
     float[] frequencies; // multipliers relative to middle frequency, to get real frequency, use frequency[i]*middleFrequency
     float minFrequencyK = 0;
     float maxFrequencyK = 0;
 
+    this() {
+    }
+
+    this(WaveFile v, bool forceMono = false) {
+        channels = v.channels;
+        sampleRate = v.sampleRate;
+        frames = v.frames;
+        if (channels == 1 || !forceMono) {
+            // just duplicate
+            data = v.data.dup;
+        } else {
+            // take left channel only
+            data = new float[frames];
+            for (int i = 0; i < frames; i++)
+                data[i] = v.data[i * channels];
+            channels = 1;
+        }
+        if (v.marks.length)
+            marks = v.marks.dup;
+        middleFrequency = v.middleFrequency;
+        if (v.frequencies.length)
+            frequencies = v.frequencies.dup; // multipliers relative to middle frequency, to get real frequency, use frequency[i]*middleFrequency
+        minFrequencyK = v.minFrequencyK;
+        maxFrequencyK = v.maxFrequencyK;
+    }
+
+    void fill(float value) {
+        data[0..$] = value;
+    }
+
     void setMarks(float[] _marks) {
         marks = _marks;
     }
 
-    void generateFreqienciesFromMarks() {
+    void fillPeriodsFromMarks() {
+        periods = null;
+        if (marks.length > 1) {
+            periods.length = marks.length - 1;
+            for (int i = 0; i + 1 < marks.length; i++) {
+                fillPeriodInfo(periods[i], marks[i], marks[i + 1]);
+            }
+        }
+    }
+
+    float[] amplitudes;
+    void fillAmplitudesFromPeriods() {
+        amplitudes = null;
+        if (periods.length > 1) {
+            float[] ampPlus = new float[frames];
+            float[] ampMinus = new float[frames];
+            int prevPeriodMiddleFrame = 0;
+            float prevPeriodAmpPlus = periods[0].ampPlus;
+            float prevPeriodAmpMinus = periods[0].ampMinus;
+            float avgPeriod = 0;
+            for (int i = 0; i < periods.length; i++) {
+                avgPeriod += periods[i].periodTime;
+                int middleFrame = timeToFrame(periods[i].middleTime);
+                float currentAmpPlus = periods[i].ampPlus;
+                float currentAmpMinus = periods[i].ampMinus;
+                int frameLen = middleFrame - prevPeriodMiddleFrame;
+                for (int j = 0; j < frameLen; j++) {
+                    ampPlus[prevPeriodMiddleFrame + j] = prevPeriodAmpPlus + (currentAmpPlus - prevPeriodAmpPlus) * j / frameLen;
+                    ampMinus[prevPeriodMiddleFrame + j] = prevPeriodAmpMinus + (currentAmpMinus - prevPeriodAmpMinus) * j / frameLen;
+                }
+                prevPeriodMiddleFrame = middleFrame;
+                prevPeriodAmpPlus = currentAmpPlus;
+                prevPeriodAmpMinus = currentAmpMinus;
+            }
+            avgPeriod /= periods.length;
+            // fill till end of wave
+            for (int i = prevPeriodMiddleFrame; i < frames; i++) {
+                ampPlus[i] = prevPeriodAmpPlus;
+                ampMinus[i] = prevPeriodAmpMinus;
+            }
+            int lowpassFilterSize = cast(int)(2 * (1/avgPeriod)) | 1;
+            float[] lowpassFirFilter = blackmanWindow(lowpassFilterSize);
+            float[] ampPlusFiltered = new float[frames];
+            float[] ampMinusFiltered = new float[frames];
+            applyFirFilter(ampPlus, ampPlusFiltered, lowpassFirFilter);
+            applyFirFilter(ampMinus, ampMinusFiltered, lowpassFirFilter);
+            amplitudes = new float[frames];
+            float maxAmpPlus = ampPlusFiltered[0];
+            float maxAmpMinus = ampMinusFiltered[0];
+            for (int i = 1; i < frames; i++) {
+                if (maxAmpPlus < ampPlusFiltered[i])
+                    maxAmpPlus = ampPlusFiltered[i];
+                if (maxAmpMinus < ampMinusFiltered[i])
+                    maxAmpMinus = ampMinusFiltered[i];
+            }
+            if (maxAmpPlus > maxAmpMinus)
+                amplitudes = ampPlusFiltered;
+            else
+                amplitudes = ampMinusFiltered;
+            //for (int i = 0; i < frames; i++) {
+            //    amplitudes[i] = (ampPlusFiltered[i] + ampMinusFiltered[i]);
+            //}
+        }
+    }
+
+    void normalizeAmplitude() {
+        if (amplitudes && amplitudes.length == frames) {
+            for (int i = 0; i < frames; i++) {
+                data.ptr[i] /= amplitudes.ptr[i];
+            }
+        }
+    }
+
+    void correctMarksForNormalizedAmplitude() {
+    }
+
+    void fillPeriodInfo(ref PeriodInfo period, float start, float end) {
+        period.startTime = start;
+        period.periodTime = end - start;
+        int startSample = timeToFrame(start);
+        int endSample = timeToFrame(end);
+        float maxValue = 0;
+        float minValue = 0;
+        for (int i = startSample; i < endSample; i++) {
+            if (i >= 0 && i < frames) {
+                float sample = data.ptr[i * channels];
+                if (maxValue < sample)
+                    maxValue = sample;
+                if (minValue > sample)
+                    minValue = sample;
+            }
+        }
+        period.ampPlus = maxValue;
+        period.ampMinus = -minValue;
+    }
+
+    void generateFrequenciesFromMarks() {
         frequencies = null;
         middleFrequency = 0;
         minFrequencyK = 0;
@@ -232,6 +373,11 @@ class WaveFile {
         return res;
     }
 
+    /// returns autocorrelation best frequency at center of file
+    float calcBaseFrequency() {
+        return calcLocalFrequency(frameToTime(frames / 2), 30);
+    }
+
     float[] findZeroPhasePositions() {
         import dlangui.core.logger;
 
@@ -280,6 +426,14 @@ class WaveFile {
             zpositions ~= freqPosition;
             freqPosition += step;
         }
+        // till end - just use fixed freq
+        maxtime = frames / cast(float)sampleRate - 0.1f / initialFreq;
+        for (int i = 0; i < 3; i++) {
+            freqPosition += step;
+            if (freqPosition > maxtime)
+                break;
+            zpositions ~= freqPosition;
+        }
         Log.d("Scanning time range ", mintime, " .. ", initialPosition);
         freqPosition = initialPosition;
         freq = initialFreq;
@@ -295,6 +449,14 @@ class WaveFile {
             freqPosition = zeroPhaseTime2;
             zpositionsBefore ~= freqPosition;
             freqPosition -= step;
+        }
+        // till beginning - just use fixed freq
+        mintime = 0.1f / initialFreq;
+        for (int i = 0; i < 3; i++) {
+            freqPosition -= step;
+            if (freqPosition < maxtime)
+                break;
+            zpositionsBefore ~= freqPosition;
         }
 
         //Log.d("zpositions: ", zpositions, "   before: ", zpositionsBefore);
@@ -433,6 +595,51 @@ class WaveFile {
         //float amplitude = sqrt(sumSin * sumSin); // / periodSamples;
         return sumSin; //amplitude;
     }
+
+    /// create WaveFile which is FIR filtered copy of current wave
+    WaveFile firFilter(float[] filter) {
+        WaveFile res = new WaveFile(this, true);
+        applyFirFilter(data, res.data, filter);
+        return res;
+    }
+
+    /// create WaveFile which is FIR inverse filtered copy of current wave
+    WaveFile firFilterInverse(float[] filter) {
+        WaveFile res = new WaveFile(this, true);
+        applyFirFilterInverse(data, res.data, filter);
+        return res;
+    }
+
+}
+
+void applyFirFilterInverse(float[] src, float[] dst, float[] filter) {
+    assert(src.length == dst.length);
+    applyFirFilter(src, dst, filter);
+    int len = cast(int)src.length;
+    for(int i = 0; i < len; i++) {
+        dst.ptr[i] = src.ptr[i] - dst.ptr[i];
+    }
+}
+
+void applyFirFilter(float[] src, float[] dst, float[] filter) {
+    assert(src.length == dst.length);
+    int filterLen = cast(int)filter.length;
+    int filterMiddle = filterLen / 2;
+    int len = cast(int)src.length;
+    for (int x = 0; x < len; x++) {
+        double filterSum = 0;
+        double resultSum = 0;
+        for (int i = 0; i < filterLen; i++) {
+            int index = i - filterMiddle + x;
+            if (index >= 0 && index < len) {
+                float sample = src.ptr[index];
+                float flt = filter.ptr[i];
+                resultSum += sample * flt;
+                filterSum += flt;
+            }
+        }
+        dst.ptr[x] = resultSum / filterSum;
+    }
 }
 
 // calc parabola coefficients for points (x1, y1), (x1 + 1, y2), (x1 + 2, y3)
@@ -442,13 +649,44 @@ void calcParabola(int x1, float y1, float y2, float y3, ref float a, ref float b
     c = (x1 + 1) *y1 - x1 * y2 + a * x1 * (x1 + 1);
 }
 
+float[] makeLowpassBlackmanFirFilter(int N) {
+    float[] res = blackmanWindow(N).dup;
+    double s = 0;
+    foreach(v; res)
+        s += v;
+    foreach(ref v; res)
+        v = -v / s;
+    res[N / 2] += 2;
+
+
+    s = 0;
+    foreach(v; res)
+        s += v;
+
+    return res;
+}
+
+void normalizeFirFilter(float[] coefficients) {
+    double s = 0;
+    foreach(v; coefficients)
+        s += v;
+    foreach(ref v; coefficients)
+        v /= s;
+}
+
+__gshared float[][int] BLACKMAN_WINDOW_CACHE;
+
 // generate blackman window in array [0..N] (value at N/2 == 1)
 float[] blackmanWindow(int N) {
+    if (auto existing = N in BLACKMAN_WINDOW_CACHE) {
+        return *existing;
+    }
     import std.math : cos, PI;
     float[] res = new float[N + 1];
     for (int i = 1; i <= N + 1; i++) {
         res[i - 1] = 0.42f - 0.5f * cos(2 * PI * i / (N + 2)) + 0.08 * cos(4 * PI * i  / (N + 2));
     }
+    BLACKMAN_WINDOW_CACHE[N] = res;
     return res;
 }
 
