@@ -219,6 +219,18 @@ class WaveFile {
         period.energy = energy;
     }
 
+    void smoothMarks() {
+        if (marks.length < 3)
+            return;
+        float[] tmp = new float[marks.length];
+        tmp[0] = marks[0];
+        tmp[$ - 1] = marks[$ - 1];
+        for (int i = 1; i + 1 < marks.length; i++) {
+            tmp[i] = (marks[i] + marks[i - 1] + marks[i + 1]) / 3;
+        }
+        marks = tmp;
+    }
+
     void generateFrequenciesFromMarks() {
         frequencies = null;
         middleFrequency = 0;

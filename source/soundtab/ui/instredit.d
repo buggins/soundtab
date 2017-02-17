@@ -797,10 +797,10 @@ class LoopWaveWidget : WaveFileWidget {
     /// override to allow extra views
     override void drawExtraViews(DrawBuf buf) {
         if (_hasAmps) {
-            drawExtraArray(buf, _ampRect, _file.amplitudes, _minAmp, _maxAmp, "Amplitude: ", 0x202000, 0x604000);
+            drawExtraArray(buf, _ampRect, _file.amplitudes, _minAmp, _maxAmp, "Amplitude", 0x202000, 0x604000);
         }
         if (_hasFreqs) {
-            drawExtraArray(buf, _freqRect, _file.frequencies, _minFreq, _maxFreq, "Frequency: ", 0x002000, 0x0000C0);
+            drawExtraArray(buf, _freqRect, _file.frequencies, _minFreq, _maxFreq, "Frequency", 0x002000, 0x0000C0);
         }
     }
 
@@ -852,6 +852,8 @@ class InstrEditorBody : VerticalLayout {
                     highpass.fillAmplitudesFromPeriods();
                     highpass.normalizeAmplitude();
                     highpass.correctMarksForNormalizedAmplitude();
+                    highpass.smoothMarks();
+                    highpass.smoothMarks();
                     highpass.generateFrequenciesFromMarks();
                     if (zeroPhasePositionsNormal.length > 1) {
                         tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
