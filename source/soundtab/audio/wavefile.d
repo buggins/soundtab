@@ -1,11 +1,14 @@
 module soundtab.audio.wavefile;
 
+immutable int PERIOD_FFT_SIZE = 256;
 struct PeriodInfo {
     float startTime = 0;
     float periodTime = 0;
     float ampPlus = 0;
     float ampMinus = 0;
     float energy = 0;
+    float[PERIOD_FFT_SIZE / 2] fftAmp;
+    float[PERIOD_FFT_SIZE / 2] fftPhase;
     @property float middleTime() {
         return startTime + periodTime / 2;
     }
@@ -235,6 +238,31 @@ class WaveFile {
         period.ampPlus = maxValue;
         period.ampMinus = -minValue;
         period.energy = energy;
+        double[] src = new double[PERIOD_FFT_SIZE];
+        float step = (end - start) / PERIOD_FFT_SIZE;
+        float t = start;
+        for (int i = 0; i < PERIOD_FFT_SIZE; i++) {
+            src[i] = getSampleInterpolated(t);
+            t += step;
+        }
+        import std.numeric;
+        import std.math;
+        import std.complex;
+        Complex!double[] res = new Complex!double[PERIOD_FFT_SIZE];
+        static Fft periodFFT = null;
+        if (!periodFFT)
+            periodFFT = new Fft(PERIOD_FFT_SIZE);
+        periodFFT.fft(src[0..$], res[0..$]);
+        for (int i = 0; i < PERIOD_FFT_SIZE / 2; i++) {
+            double re = res[i].re;
+            double im = res[i].im;
+            double amp = sqrt(re*re + im*im);
+            double phase = 0;
+            if (amp > 0)
+                phase = atan2(re, im);
+            period.fftAmp[i] = amp;
+            period.fftPhase[i] = phase;
+        }
     }
 
     void smoothMarks() {
@@ -509,59 +537,29 @@ class WaveFile {
 
     float findZeroCrossingNear(float timePosition) {
         int frame = timeToFrame(timePosition);
-        float sample = getSample(frame);
-        float sample0 = getSample(frame - 1);
-        float sample1 = getSample(frame + 1);
+
         int frame0, frame1;
         frame0 = frame1 = frame;
-        if (sample > 0) {
-            if (sample0 < sample) {
-                // backward
-                for (int i = 1; i < 10000; i++) {
-                    float s = getSample(frame - i);
-                    if (s <= 0) {
-                        frame0 = frame - i;
-                        frame1 = frame - i + 1;
-                        break;
-                    }
-                }
-            } else {
-                // forward
-                for (int i = 1; i < 10000; i++) {
-                    float s = getSample(frame + i);
-                    if (s <= 0) {
-                        frame0 = frame + i - 1;
-                        frame1 = frame + i;
-                        break;
-                    }
-                }
+        for (int i = 0; i < 10000; i++) {
+            float sample = getSample(frame + i);
+            float sample1 = getSample(frame + i + 1);
+            if ((sample >= 0 && sample1 <=0) || (sample <= 0 && sample1 >=0)) {
+                frame0 = frame + i;
+                frame1 = frame + i + 1;
+                break;
             }
-        } else {
-            if (sample0 > sample) {
-                // backward
-                for (int i = 1; i < 10000; i++) {
-                    float s = getSample(frame - i);
-                    if (s >= 0) {
-                        frame0 = frame - i;
-                        frame1 = frame - i + 1;
-                        break;
-                    }
-                }
-            } else {
-                // forward
-                for (int i = 1; i < 10000; i++) {
-                    float s = getSample(frame + i);
-                    if (s >= 0) {
-                        frame0 = frame + i - 1;
-                        frame1 = frame + i;
-                        break;
-                    }
-                }
+            sample = getSample(frame - i);
+            sample1 = getSample(frame - i - 1);
+            if ((sample >= 0 && sample1 <=0) || (sample <= 0 && sample1 >=0)) {
+                frame0 = frame - i - 1;
+                frame1 = frame - i;
+                break;
             }
         }
+
         if (frame0 < frame1) {
-            sample0 = getSample(frame0);
-            sample1 = getSample(frame1);
+            float sample0 = getSample(frame0);
+            float sample1 = getSample(frame1);
             if (sample0 != sample1) {
                 float time0 = frameToTime(frame0);
                 float time1 = frameToTime(frame1);
@@ -569,6 +567,7 @@ class WaveFile {
                 float t = time0 - sample0 * (time1 - time0) / (sample1 - sample0);
                 return t;
             }
+            return frameToTime(frame0);
         }
         // cannot correct
         return timePosition;
