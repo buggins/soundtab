@@ -256,13 +256,18 @@ class WaveFile {
         for (int i = 0; i < PERIOD_FFT_SIZE / 2; i++) {
             double re = res[i].re;
             double im = res[i].im;
-            double amp = sqrt(re*re + im*im);
+            double amp = sqrt((re*re + im*im) / PERIOD_FFT_SIZE);
             double phase = 0;
-            if (amp > 0)
+            if (amp > 0.0001) {
                 phase = atan2(re, im);
+            } else {
+                amp = 0;
+            }
             period.fftAmp[i] = amp;
             period.fftPhase[i] = phase;
         }
+        import dlangui.core.logger;
+        Log.d("period[", period.startTime, "] fft amps=", period.fftAmp);
     }
 
     void smoothMarks() {
