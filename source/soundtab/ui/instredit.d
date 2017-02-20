@@ -850,12 +850,14 @@ class InstrEditorBody : VerticalLayout {
                     WaveFile highpass = lowpass.firFilterInverse(highpassFirFilter);
                     int lowpassSign = lowpass.getMaxAmplitudeSign();
                     //float[] zeroPhasePositionsLowpass = lowpass.findZeroPhasePositions(lowpassSign);
-                    //int highpassSign = highpass.getMaxAmplitudeSign();
-                    float[] zeroPhasePositionsHighpassPositive = highpass.findZeroPhasePositions(1);
-                    float[] zeroPhasePositionsHighpassNegative = highpass.findZeroPhasePositions(-1);
-                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
-                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
-                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    int highpassSign = highpass.getMaxAmplitudeSign();
+                    float[] zeroCrossHighpass = highpass.findZeroCrossingPositions(highpassSign);
+                    
+                    //float[] zeroPhasePositionsHighpassPositive = highpass.findZeroPhasePositions(1);
+                    //float[] zeroPhasePositionsHighpassNegative = highpass.findZeroPhasePositions(-1);
+                    //smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
                     //smoothTimeMarks(zeroPhasePositionsHighpassPositive);
                     //smoothTimeMarks(zeroPhasePositionsHighpassPositive);
                     //smoothTimeMarks(zeroPhasePositionsHighpassNegative);
@@ -864,25 +866,33 @@ class InstrEditorBody : VerticalLayout {
                     int normalSign = tmp.getMaxAmplitudeSign();
                     //float[] zeroPhasePositionsNormal = tmp.findZeroPhasePositions(normalSign);
                     //Log.d("Zero phase positions for lowpass filtered data: ", zeroPhasePositionsLowpass);
-                    Log.d("Zero phase positions for lowpass+highpass filtered data: ", zeroPhasePositionsHighpassPositive);
+                    //Log.d("Zero phase positions for lowpass+highpass filtered data: ", zeroPhasePositionsHighpassPositive);
                     //Log.d("Zero phase positions for non filtered data: ", zeroPhasePositionsNormal);
-                    tmp.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
-                    lowpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
-                    highpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //tmp.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //lowpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //highpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    for (int i = 0; i < 10; i++)
+                        smoothTimeMarks(zeroCrossHighpass);
+                    highpass.setMarks(zeroCrossHighpass);
                     highpass.fillPeriodsFromMarks();
                     highpass.fillAmplitudesFromPeriods();
                     highpass.normalizeAmplitude();
-                    highpass.correctMarksForNormalizedAmplitude();
+                    //highpass.correctMarksForNormalizedAmplitude();
                     //highpass.smoothMarks();
                     //highpass.smoothMarks();
                     highpass.generateFrequenciesFromMarks();
+                    tmp.marks = highpass.marks;
+                    tmp.negativeMarks = highpass.negativeMarks;
+                    tmp.frequencies = highpass.frequencies;
+                    tmp.amplitudes = highpass.amplitudes;
+                    tmp.normalizeAmplitude;
                     //if (zeroPhasePositionsNormal.length > 1) {
                     //    tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
                     //    tmp.generateFrequenciesFromMarks();
                     //}
                     //_loop.file = lowpass;
-                    _loop.file = highpass;
-                    //_loop.file = tmp;
+                    //_loop.file = highpass;
+                    _loop.file = tmp;
                 }
                 return true;
             default:

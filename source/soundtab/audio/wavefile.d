@@ -507,6 +507,198 @@ class WaveFile {
         return maxPositive > maxNegative ? 1 : -1;
     }
 
+    float findZeroCrossingNear(float timePosition) {
+        int frame = timeToFrame(timePosition);
+        float sample = getSample(frame);
+        float sample0 = getSample(frame - 1);
+        float sample1 = getSample(frame + 1);
+        int frame0, frame1;
+        frame0 = frame1 = frame;
+        if (sample > 0) {
+            if (sample0 < sample) {
+                // backward
+                for (int i = 1; i < 10000; i++) {
+                    float s = getSample(frame - i);
+                    if (s <= 0) {
+                        frame0 = frame - i;
+                        frame1 = frame - i + 1;
+                        break;
+                    }
+                }
+            } else {
+                // forward
+                for (int i = 1; i < 10000; i++) {
+                    float s = getSample(frame + i);
+                    if (s <= 0) {
+                        frame0 = frame + i - 1;
+                        frame1 = frame + i;
+                        break;
+                    }
+                }
+            }
+        } else {
+            if (sample0 > sample) {
+                // backward
+                for (int i = 1; i < 10000; i++) {
+                    float s = getSample(frame - i);
+                    if (s >= 0) {
+                        frame0 = frame - i;
+                        frame1 = frame - i + 1;
+                        break;
+                    }
+                }
+            } else {
+                // forward
+                for (int i = 1; i < 10000; i++) {
+                    float s = getSample(frame + i);
+                    if (s >= 0) {
+                        frame0 = frame + i - 1;
+                        frame1 = frame + i;
+                        break;
+                    }
+                }
+            }
+        }
+        if (frame0 < frame1) {
+            sample0 = getSample(frame0);
+            sample1 = getSample(frame1);
+            if (sample0 != sample1) {
+                float time0 = frameToTime(frame0);
+                float time1 = frameToTime(frame1);
+                // linear equation, find crossing 0
+                float t = time0 - sample0 * (time1 - time0) / (sample1 - sample0);
+                return t;
+            }
+        }
+        // cannot correct
+        return timePosition;
+    }
+
+    float findMaxDiffPosition(int startFrame, int endFrame) {
+        float maxDiffPlus = 0;
+        float maxDiffMinus = 0;
+        int maxDiffPositionPlus = startFrame;
+        int maxDiffPositionMinus = startFrame;
+        for (int i = startFrame + 1; i < endFrame; i++) {
+            float diff = getSample(i) - getSample(i - 1);
+            if (diff > 0) {
+                if (maxDiffPlus < diff) {
+                    maxDiffPlus = diff;
+                    maxDiffPositionPlus = i;
+                }
+            } else {
+                if (maxDiffMinus < -diff) {
+                    maxDiffMinus = -diff;
+                    maxDiffPositionMinus = i;
+                }
+            }
+        }
+        if (maxDiffPlus > maxDiffMinus)
+            return frameToTime(maxDiffPositionPlus);
+        return frameToTime(maxDiffPositionMinus);
+    }
+
+    /// sign == 1 if biggest amplitude is positive, -1 if negative
+    float[] findZeroCrossingPositions(int sign = 1) {
+        import dlangui.core.logger;
+
+        float freqPosition = frameToTime(frames / 2);
+        float freqBigRange = calcLocalFrequency(freqPosition, 40);
+        float freqShortRange = calcLocalFrequency(freqPosition, freqBigRange / 4);
+        Log.d("Frequencies: ", freqBigRange, " ", freqShortRange);
+
+        freqBigRange = calcLocalFrequency(freqPosition, 40);
+        freqShortRange = calcLocalFrequency(freqPosition, freqBigRange / 4);
+
+        float zeroPhaseTime;
+        float amplitude;
+        //findNearPhase0(freqPosition, freqShortRange, 1, zeroPhaseTime, amplitude);
+        float zeroPhaseTime2;
+        float amplitude2;
+        float freq;
+
+        // find max difference position
+        freqPosition = findMaxDiffPosition(timeToFrame(freqPosition - 1/freqShortRange), timeToFrame(freqPosition + 1/freqShortRange));
+        // find near zero crossing
+        freqPosition = findZeroCrossingNear(freqPosition);
+
+        float initialPosition = freqPosition;
+        float initialFreq = freqShortRange;
+        float[] zpositions;
+        float[] zpositionsBefore;
+        zpositions ~= freqPosition;
+
+        float maxtime = frames / cast(float)sampleRate - 1f / initialFreq;
+        float mintime = 1f / initialFreq;
+
+
+        Log.d("Scanning time range ", initialPosition, " .. ", maxtime);
+        freqPosition = initialPosition;
+        freq = initialFreq;
+        float step = 1/freq;
+        float prevPosition = freqPosition;
+        freqPosition += step;
+        for (int i = 0; i < 10000; i++) {
+            if (freqPosition > maxtime)
+                break;
+            freqPosition = findZeroCrossingNear(freqPosition);
+            step = freqPosition - prevPosition;
+            prevPosition = freqPosition;
+            zpositions ~= freqPosition;
+            freqPosition += step;
+        }
+        // till end - just use fixed freq
+        maxtime = frames / cast(float)sampleRate - 0.1f / initialFreq;
+        for (int i = 0; i < 3; i++) {
+            if (freqPosition > maxtime)
+                break;
+            zpositions ~= freqPosition;
+            freqPosition += step;
+        }
+        Log.d("Scanning time range ", mintime, " .. ", initialPosition);
+        freqPosition = initialPosition;
+        freq = initialFreq;
+        step = 1/freq;
+        prevPosition = freqPosition;
+        freqPosition -= step;
+        for (int i = 0; i < 10000; i++) {
+            if (freqPosition < mintime)
+                break;
+            freqPosition = findZeroCrossingNear(freqPosition);
+            step = prevPosition - freqPosition;
+            prevPosition = freqPosition;
+            zpositionsBefore ~= freqPosition;
+            freqPosition -= step;
+        }
+        // till beginning - just use fixed freq
+        mintime = 0.1f / initialFreq;
+        for (int i = 0; i < 3; i++) {
+            if (freqPosition < mintime)
+                break;
+            zpositionsBefore ~= freqPosition;
+            freqPosition -= step;
+        }
+
+        //Log.d("zpositions: ", zpositions, "   before: ", zpositionsBefore);
+
+        // combine positions before and after
+        float[] zpositionsAll;
+        for (int i = cast(int)zpositionsBefore.length - 1; i >= 0; i--)
+            zpositionsAll ~= zpositionsBefore[i];
+        zpositionsAll ~= zpositions;
+
+        float[] freqs;
+        for (int i = 1; i < zpositionsAll.length; i++) {
+            freqs ~= 1 / (zpositionsAll[i] - zpositionsAll[i - 1]);
+        }
+
+        //Log.d("zpositionsAll: ", zpositionsAll);
+        Log.d("freqs: ", freqs);
+        return zpositionsAll;
+    }
+
+
+
     /// sign == 1 if biggest amplitude is positive, -1 if negative
     float[] findZeroPhasePositions(int sign = 1) {
         import dlangui.core.logger;
