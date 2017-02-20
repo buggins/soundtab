@@ -953,6 +953,86 @@ class WaveFile {
 
 }
 
+/* Autocorrelation LPC coeff generation algorithm invented by
+   N. Levinson in 1947, modified by J. Durbin in 1959. */
+
+/* Input : elements of time doamin data (with window applied)
+   Output: lpc coefficients, excitation energy */
+float calcLPC(float[] data, float[] lpci) {
+    int n = cast(int)data.length;
+    int m = cast(int)lpci.length;
+    double[] aut = new double[m + 1];
+    double[] lpc = new double[m];
+    double error;
+    double epsilon;
+    int i,j;
+
+    /* autocorrelation, p+1 lag coefficients */
+    j=m+1;
+    while(j--){
+        double d=0; /* double needed for accumulator depth */
+        for(i=j; i<n; i++)
+            d += cast(double)data[i] * data[i-j];
+        aut[j]=d;
+    }
+
+    /* Generate lpc coefficients from autocorr values */
+
+    /* set our noise floor to about -100dB */
+    error = aut[0] * (1. + 1e-10);
+    epsilon = 1e-9*aut[0]+1e-10;
+
+    for(i=0; i<m; i++){
+        double r= -aut[i+1];
+
+        if (error < epsilon) {
+            lpc[i .. $] = 0;
+            break;
+        }
+
+        /* Sum up this iteration's reflection coefficient; note that in
+        Vorbis we don't save it.  If anyone wants to recycle this code
+        and needs reflection coefficients, save the results of 'r' from
+        each iteration. */
+
+        for (j=0; j<i; j++)
+            r -= lpc[j] * aut[i - j];
+        r /= error;
+
+        /* Update LPC coefficients and total error */
+
+        lpc[i]=r;
+        for(j=0; j<i/2; j++) {
+            double tmp = lpc[j];
+
+            lpc[j] += r * lpc[i-1-j];
+            lpc[i-1-j] += r*tmp;
+        }
+        if(i&1)
+            lpc[j]+=lpc[j]*r;
+
+        error *= 1. - r*r;
+    }
+
+    /* slightly damp the filter */
+    {
+        double g = .99;
+        double damp = g;
+        for(j=0;j<m;j++){
+            lpc[j]*=damp;
+            damp*=g;
+        }
+    }
+
+    for(j=0; j<m; j++)
+        lpci[j] = cast(float)lpc[j];
+
+    /* we need the error value to know how big an impulse to hit the
+    filter with later */
+
+    return error;
+}
+
 void applyFirFilterInverse(float[] src, float[] dst, float[] filter) {
     assert(src.length == dst.length);
     applyFirFilter(src, dst, filter);
