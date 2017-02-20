@@ -731,10 +731,13 @@ class SourceWaveFileWidget : WaveFileWidget {
 class LoopWaveWidget : WaveFileWidget {
     protected Rect _ampRect;
     protected Rect _freqRect;
+    protected Rect _fftRect;
     protected bool _hasAmps;
     protected bool _hasFreqs;
+    protected bool _hasFft;
     protected float _minAmp = 0;
     protected float _maxAmp = 0;
+    protected float _maxFftAmp = 0;
     protected float _minFreq = 0;
     protected float _maxFreq = 0;
     this(Mixer mixer) {
@@ -762,6 +765,16 @@ class LoopWaveWidget : WaveFileWidget {
             }
             _hasFreqs = _maxFreq > _minFreq;
         }
+        if (_file && _file.periods.length > 0) {
+            _maxFftAmp = 0;
+            foreach (p; _file.periods) {
+                foreach(amp; p.fftAmp) {
+                    if (_maxFftAmp < amp)
+                        _maxFftAmp = amp;
+                }
+            }
+            _hasFft = _maxFftAmp > 0;
+        }
     }
 
     /// override to allow extra views
@@ -773,10 +786,19 @@ class LoopWaveWidget : WaveFileWidget {
         if (_hasFreqs) {
             h += 32;
         }
+        if (_hasFft)
+            h += 256;
         return h;
     }
     /// override to allow extra views
     override void layoutExtraViews(Rect rc) {
+        _fftRect = rc;
+        if (_hasFft) {
+            _fftRect.top = rc.bottom - 256;
+            rc.bottom = _fftRect.top;
+        } else {
+            _fftRect.bottom = _fftRect.top;
+        }
         _ampRect = rc;
         _freqRect = rc;
         if (_hasAmps && _hasFreqs) {
@@ -803,6 +825,26 @@ class LoopWaveWidget : WaveFileWidget {
         font.drawText(buf, rc.left + 2, rc.top + 2, "%s: min=%f max=%f".format(title, minValue, maxValue).toUTF32, 0xFFFFFF);
     }
 
+    protected void drawFft(DrawBuf buf, ref PeriodInfo period, Rect rc) {
+        import std.math : PI, sqrt, log2;
+        for (int i = 0; i < 128; i++) {
+            float amp = (period.fftAmp[i] / _maxFftAmp); // range is 0..1
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            amp = log2(amp + 1); // range is 0..1, but log scaled
+            float phase = (period.fftPhase[i] + PI) / (2 * PI);
+            uint iamp = cast(int)(amp * 256);
+            uint iphase = cast(int)(phase * 256);
+            uint ampcolor = (iamp << 16) | (iamp << 8)| (iamp);
+            uint phcolor = (iphase << 16) | (iphase << 8)| (iphase);
+            buf.fillRect(Rect(rc.left, rc.top + i, rc.right, rc.top + i + 1), ampcolor);
+            buf.fillRect(Rect(rc.left, rc.top + i + 128, rc.right, rc.top + i + 1 + 128), phcolor);
+        }
+    }
+
     /// override to allow extra views
     override void drawExtraViews(DrawBuf buf) {
         if (_hasAmps) {
@@ -810,6 +852,20 @@ class LoopWaveWidget : WaveFileWidget {
         }
         if (_hasFreqs) {
             drawExtraArray(buf, _freqRect, _file.frequencies, _minFreq, _maxFreq, "Frequency", 0x002000, 0x0000C0);
+        }
+        if (_hasFft) {
+            auto saver = ClipRectSaver(buf, _fftRect, alpha);
+            buf.fillRect(_fftRect, 0x100000);
+            foreach(period; _file.periods) {
+                int startFrame = _file.timeToFrame(period.startTime);
+                int endFrame = _file.timeToFrame(period.endTime);
+                int startx = startFrame / _hscale - _scrollPos + _fftRect.left;
+                int endx = endFrame / _hscale - _scrollPos + _fftRect.left;
+                if (startx < _fftRect.right && endx > _fftRect.left) {
+                    // frame is visible
+                    drawFft(buf, period, Rect(startx, _fftRect.top, endx, _fftRect.bottom));
+                }
+            }
         }
     }
 
@@ -886,6 +942,7 @@ class InstrEditorBody : VerticalLayout {
                     tmp.frequencies = highpass.frequencies;
                     tmp.amplitudes = highpass.amplitudes;
                     tmp.normalizeAmplitude;
+                    tmp.fillPeriodsFromMarks();
                     //if (zeroPhasePositionsNormal.length > 1) {
                     //    tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
                     //    tmp.generateFrequenciesFromMarks();
