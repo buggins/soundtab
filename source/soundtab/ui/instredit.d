@@ -704,6 +704,15 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
                         }
                     }
                 }
+                if (_file.negativeMarks.length) {
+                    for (int i = 0; i < _file.negativeMarks.length; i++) {
+                        int markSample = _file.timeToFrame(_file.negativeMarks[i]);
+                        int x = (markSample / _hscale) - _scrollPos + _clientRect.left;
+                        if (x >= _clientRect.left && x < _clientRect.right) {
+                            buf.fillRect(Rect(x, _clientRect.top, x + 1, _clientRect.bottom), 0xA00000FF);
+                        }
+                    }
+                }
             }
             // draw y==0
             buf.fillRect(Rect(_clientRect.left, my, _clientRect.right, my + 1), 0x80606030);
@@ -839,26 +848,38 @@ class InstrEditorBody : VerticalLayout {
                     float[] highpassFirFilter = blackmanWindow(highpassFilterSize); //makeLowpassBlackmanFirFilter(highpassFilterSize);
                     WaveFile lowpass = tmp.firFilter(lowpassFirFilter);
                     WaveFile highpass = lowpass.firFilterInverse(highpassFirFilter);
-                    float[] zeroPhasePositionsLowpass = lowpass.findZeroPhasePositions();
-                    float[] zeroPhasePositionsHighpass = highpass.findZeroPhasePositions();
-                    float[] zeroPhasePositionsNormal = tmp.findZeroPhasePositions();
-                    Log.d("Zero phase positions for lowpass filtered data: ", zeroPhasePositionsLowpass);
-                    Log.d("Zero phase positions for lowpass+highpass filtered data: ", zeroPhasePositionsHighpass);
-                    Log.d("Zero phase positions for non filtered data: ", zeroPhasePositionsNormal);
-                    tmp.setMarks(zeroPhasePositionsHighpass);
-                    lowpass.setMarks(zeroPhasePositionsHighpass);
-                    highpass.setMarks(zeroPhasePositionsHighpass);
+                    int lowpassSign = lowpass.getMaxAmplitudeSign();
+                    //float[] zeroPhasePositionsLowpass = lowpass.findZeroPhasePositions(lowpassSign);
+                    //int highpassSign = highpass.getMaxAmplitudeSign();
+                    float[] zeroPhasePositionsHighpassPositive = highpass.findZeroPhasePositions(1);
+                    float[] zeroPhasePositionsHighpassNegative = highpass.findZeroPhasePositions(-1);
+                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    smoothTimeMarksShifted(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    //smoothTimeMarks(zeroPhasePositionsHighpassPositive);
+                    //smoothTimeMarks(zeroPhasePositionsHighpassPositive);
+                    //smoothTimeMarks(zeroPhasePositionsHighpassNegative);
+                    //smoothTimeMarks(zeroPhasePositionsHighpassNegative);
+
+                    int normalSign = tmp.getMaxAmplitudeSign();
+                    //float[] zeroPhasePositionsNormal = tmp.findZeroPhasePositions(normalSign);
+                    //Log.d("Zero phase positions for lowpass filtered data: ", zeroPhasePositionsLowpass);
+                    Log.d("Zero phase positions for lowpass+highpass filtered data: ", zeroPhasePositionsHighpassPositive);
+                    //Log.d("Zero phase positions for non filtered data: ", zeroPhasePositionsNormal);
+                    tmp.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    lowpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
+                    highpass.setMarks(zeroPhasePositionsHighpassPositive, zeroPhasePositionsHighpassNegative);
                     highpass.fillPeriodsFromMarks();
                     highpass.fillAmplitudesFromPeriods();
                     highpass.normalizeAmplitude();
                     highpass.correctMarksForNormalizedAmplitude();
-                    highpass.smoothMarks();
-                    highpass.smoothMarks();
+                    //highpass.smoothMarks();
+                    //highpass.smoothMarks();
                     highpass.generateFrequenciesFromMarks();
-                    if (zeroPhasePositionsNormal.length > 1) {
-                        tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
-                        tmp.generateFrequenciesFromMarks();
-                    }
+                    //if (zeroPhasePositionsNormal.length > 1) {
+                    //    tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
+                    //    tmp.generateFrequenciesFromMarks();
+                    //}
                     //_loop.file = lowpass;
                     _loop.file = highpass;
                     //_loop.file = tmp;

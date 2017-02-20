@@ -22,6 +22,7 @@ class WaveFile {
     float[] data;
 
     float[] marks;
+    float[] negativeMarks;
 
     PeriodInfo[] periods;
 
@@ -60,8 +61,9 @@ class WaveFile {
         data[0..$] = value;
     }
 
-    void setMarks(float[] _marks) {
+    void setMarks(float[] _marks, float[] _negativeMarks = null) {
         marks = _marks;
+        negativeMarks = _negativeMarks;
     }
 
     void fillPeriodsFromMarks() {
@@ -76,7 +78,8 @@ class WaveFile {
 
     immutable bool sqEnergy = true;
     float[] amplitudes;
-    void fillAmplitudesFromPeriods() {
+    /// returns sign of biggest amplitude
+    int fillAmplitudesFromPeriods() {
         amplitudes = null;
         if (periods.length > 1) {
             float[] ampPlus = new float[frames];
@@ -145,7 +148,9 @@ class WaveFile {
                 amplitudes[i] = kPlus * ampPlusFiltered[i] + kMinus * ampMinusFiltered[i] + kEnergy * maxAmp / maxEnergy;
                 //amplitudes[i] = energyFiltered[i] * maxAmp / maxEnergy;
             }
+            return maxAmpPlus > maxAmpMinus ? 1 : -1;
         }
+        return 1;
     }
 
     void normalizeAmplitude() {
@@ -157,16 +162,29 @@ class WaveFile {
     }
 
     void correctMarksForNormalizedAmplitude() {
+        correctMarksForNormalizedAmplitude(marks, 1);
+        //smoothTimeMarks(marks);
+        //smoothTimeMarks(marks);
+        correctMarksForNormalizedAmplitude(negativeMarks, -1);
+        //smoothTimeMarks(negativeMarks);
+        //smoothTimeMarks(negativeMarks);
+    }
+
+    void correctMarksForNormalizedAmplitude(ref float[] marks, int sign) {
+        if (marks.length < 3)
+            return;
         for (int i = 1; i + 1 < marks.length; i++) {
             float period = (marks[i + 1] - marks[i - 1]) / 2;
             float freq = 1 / period;
             float zeroPhaseTimePosSeconds;
             float amp;
-            findNearPhase0(marks[i], freq, 1, zeroPhaseTimePosSeconds, amp);
+            findNearPhase0(marks[i], freq, sign, zeroPhaseTimePosSeconds, amp);
             float diff = zeroPhaseTimePosSeconds - marks[i];
             if (diff < period / 5 && diff > -period / 5)
                 marks[i] = zeroPhaseTimePosSeconds;
         }
+        for (int i = 0; i < 8; i++)
+            smoothTimeMarksShifted(marks, negativeMarks);
     }
 
     void fillPeriodInfo(ref PeriodInfo period, float start, float end) {
@@ -220,15 +238,7 @@ class WaveFile {
     }
 
     void smoothMarks() {
-        if (marks.length < 3)
-            return;
-        float[] tmp = new float[marks.length];
-        tmp[0] = marks[0];
-        tmp[$ - 1] = marks[$ - 1];
-        for (int i = 1; i + 1 < marks.length; i++) {
-            tmp[i] = (marks[i] + marks[i - 1] + marks[i + 1]) / 3;
-        }
-        marks = tmp;
+        smoothTimeMarks(marks);
     }
 
     void generateFrequenciesFromMarks() {
@@ -485,7 +495,20 @@ class WaveFile {
         return calcLocalFrequency(frameToTime(frames / 2), 30);
     }
 
-    float[] findZeroPhasePositions() {
+    int getMaxAmplitudeSign() {
+        float maxPositive = 0;
+        float maxNegative = 0;
+        foreach(v; data) {
+            if (v > 0 && maxPositive < v)
+                maxPositive = v;
+            if (v < 0 && maxNegative < -v)
+                maxNegative = -v;
+        }
+        return maxPositive > maxNegative ? 1 : -1;
+    }
+
+    /// sign == 1 if biggest amplitude is positive, -1 if negative
+    float[] findZeroPhasePositions(int sign = 1) {
         import dlangui.core.logger;
 
         float freqPosition = frameToTime(frames / 2);
@@ -502,7 +525,7 @@ class WaveFile {
         float zeroPhaseTime2;
         float amplitude2;
         float freq;
-        findNearPhase0FreqAutocorrection(freqPosition, freqShortRange, 1, zeroPhaseTime2, amplitude2, freq);
+        findNearPhase0FreqAutocorrection(freqPosition, freqShortRange, 1/freqShortRange, sign, zeroPhaseTime2, amplitude2, freq);
         Log.d("Zero phase near ", freqPosition, " at freq ", freqShortRange, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " freq=", freq);
         freqPosition = zeroPhaseTime2;
 
@@ -513,8 +536,8 @@ class WaveFile {
         float[] zpositionsBefore;
         zpositions ~= freqPosition;
 
-        float maxtime = frames / cast(float)sampleRate - 1.5f / initialFreq;
-        float mintime = 1.5f / initialFreq;
+        float maxtime = frames / cast(float)sampleRate - 2f / initialFreq;
+        float mintime = 2f / initialFreq;
 
 
         Log.d("Scanning time range ", initialPosition, " .. ", maxtime);
@@ -526,7 +549,7 @@ class WaveFile {
             if (freqPosition > maxtime)
                 break;
             float oldFreq = freq;
-            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 1, zeroPhaseTime2, amplitude2, freq);
+            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 0.2 / oldFreq, sign, zeroPhaseTime2, amplitude2, freq);
             Log.d("Zero phase near ", freqPosition, " at freq ", oldFreq, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " step=", step, " freq=", freq);
             step = 1/freq;
             freqPosition = zeroPhaseTime2;
@@ -550,7 +573,7 @@ class WaveFile {
             if (freqPosition < mintime)
                 break;
             float oldFreq = freq;
-            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 1, zeroPhaseTime2, amplitude2, freq);
+            findNearPhase0FreqAutocorrection(freqPosition, oldFreq, 0.2 / oldFreq, sign, zeroPhaseTime2, amplitude2, freq);
             Log.d("Zero phase near ", freqPosition, " at freq ", oldFreq, " : pos=", zeroPhaseTime2, " amp=", amplitude2, " step=", step, " freq=", freq);
             step = 1/freq;
             freqPosition = zeroPhaseTime2;
@@ -560,10 +583,10 @@ class WaveFile {
         // till beginning - just use fixed freq
         mintime = 0.1f / initialFreq;
         for (int i = 0; i < 3; i++) {
-            freqPosition -= step;
-            if (freqPosition < maxtime)
+            if (freqPosition < mintime)
                 break;
             zpositionsBefore ~= freqPosition;
+            freqPosition -= step;
         }
 
         //Log.d("zpositions: ", zpositions, "   before: ", zpositionsBefore);
@@ -630,8 +653,9 @@ class WaveFile {
         return 0;
     }
 
-    void findNearPhase0FreqAutocorrection(float positionTimeSeconds, float freqHerz, int sign, ref float zeroPhaseTimePosSeconds, ref float amplitude, ref float newFreq) {
+    void findNearPhase0FreqAutocorrection(float positionTimeSeconds, float freqHerz, float maxCorrection, int sign, ref float zeroPhaseTimePosSeconds, ref float amplitude, ref float newFreq) {
         import dlangui.core.logger;
+        float startPosition = positionTimeSeconds;
         findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
         float autocorrelatedFrequency = calcLocalFrequency(zeroPhaseTimePosSeconds, freqHerz / 2);
         //Log.d("Initial phase detection: freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude, "  autocorrFreq=", autocorrelatedFrequency);
@@ -641,33 +665,47 @@ class WaveFile {
             findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
             //Log.d("    position updated (1) for freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude);
         }
-        positionTimeSeconds = zeroPhaseTimePosSeconds;
+        if (zeroPhaseTimePosSeconds >= startPosition - maxCorrection && zeroPhaseTimePosSeconds <= startPosition + maxCorrection) {
+            positionTimeSeconds = zeroPhaseTimePosSeconds;
+            newFreq = freqHerz;
+        } else {
+            zeroPhaseTimePosSeconds = startPosition;
+            newFreq = freqHerz;
+        }
         // calculate again at zero phase position
-        findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
+        //findNearPhase0(positionTimeSeconds, freqHerz, sign, zeroPhaseTimePosSeconds, amplitude);
         //Log.d("    position updated (2) for freq=", freqHerz, " pos=", positionTimeSeconds, " => ", zeroPhaseTimePosSeconds, " amp=", amplitude);
-        newFreq = freqHerz;
+        //newFreq = freqHerz;
     }
 
     void findNearPhase0(float positionTimeSeconds, float freqHerz, int sign, ref float zeroPhaseTimePosSeconds, ref float amplitude) {
         import std.math : sqrt, atan2, PI;
-        float[256] buf;
+        immutable int TABLE_LEN = 256;
+//        immutable int TABLE_LEN = 768;
+        float[TABLE_LEN] buf;
         float x = positionTimeSeconds * sampleRate;
         float periodSamples = sampleRate / freqHerz;
         // get interpolated one period of freq
-        getSamplesInterpolated(x, periodSamples / 256, buf[0..$]);
-        float sumSin = 0;
-        float sumCos = 0;
-        float sumSin2 = 0;
-        float sumCos2 = 0;
+        getSamplesInterpolated(x, periodSamples / TABLE_LEN, buf[0..$]);
+        double sumSin = 0;
+        double sumCos = 0;
+        //double sumSin2 = 0;
+        //double sumCos2 = 0;
         //float stepWidth = periodSamples / 256;
-        for (int i = 0; i < 256; i++) {
+        //for (int i = 0; i < TABLE_LEN; i++) {
+        //    sumSin += sign * buf.ptr[i] * SIN_SYNC_TABLE_768.ptr[i];
+        //    sumCos += sign * buf.ptr[i] * SIN_SYNC_TABLE_768.ptr[i];
+        //    //sumSin2 += SIN_SYNC_TABLE_768.ptr[i] * SIN_SYNC_TABLE_768.ptr[i];
+        //    //sumCos2 += SIN_SYNC_TABLE_768.ptr[i] * SIN_SYNC_TABLE_768.ptr[i];
+        //}
+        for (int i = 0; i < TABLE_LEN; i++) {
             sumSin += sign * buf.ptr[i] * SIN_TABLE_256.ptr[i];
             sumCos += sign * buf.ptr[i] * COS_TABLE_256.ptr[i];
-            sumSin2 += SIN_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
-            sumCos2 += COS_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
+            //sumSin2 += SIN_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
+            //sumCos2 += COS_TABLE_256.ptr[i] * SIN_TABLE_256.ptr[i];
         }
-        sumSin /= 256;
-        sumCos /= 256;
+        sumSin /= TABLE_LEN;
+        sumCos /= TABLE_LEN;
         //sumSin /= (periodSamples * periodSamples);
         //sumCos /= (periodSamples * periodSamples);
         // calc amplitude
@@ -678,7 +716,7 @@ class WaveFile {
         float phase = atan2(sumSin, sumCos) - PI/2;
         if (phase < -PI)
             phase += PI * 2;
-        float phase2 = atan2(sumSin2, sumCos2) - PI/2;
+        //float phase2 = atan2(sumSin2, sumCos2) - PI/2;
         float zeroPhaseX = x + periodSamples * phase / (2 * PI);
         zeroPhaseTimePosSeconds = zeroPhaseX / sampleRate;
     }
@@ -808,6 +846,89 @@ void correlation(float[] a, float[] b, float[] res) {
     }
 }
 
+void smoothTimeMarks(ref float[] marks) {
+    if (marks.length < 3)
+        return;
+    float[] tmp = new float[marks.length];
+    tmp[0] = marks[0];
+    tmp[$ - 1] = marks[$ - 1];
+    for (int i = 1; i + 1 < marks.length; i++) {
+        tmp[i] = (marks[i] + marks[i - 1] + marks[i + 1]) / 3;
+    }
+    marks = tmp;
+}
+
+void smoothTimeMarksShifted(ref float[] marks, ref float[] negativeMarks) {
+    float[] tmpPositive = smoothTimeMarks(marks, negativeMarks);
+    float[] tmpNegative = smoothTimeMarks(negativeMarks, marks);
+    marks = tmpPositive;
+    negativeMarks = tmpNegative;
+}
+
+/// smooth phase marks using marks shifted by half period
+float[] smoothTimeMarks(float[] marks, float[] marksShifted) {
+    if (marks.length < 3 || marksShifted.length < 3)
+        return marks;
+    int i = 0;
+    int i0 = 0;
+    if (marks[i + i0] < marksShifted[i]) {
+        i = 1;
+        i0 = -1;
+    }
+    float[] tmp = marks.dup;
+    for (; i < marks.length &&  i + i0 + 1 < marksShifted.length; i++) {
+        if (marks[i] > marksShifted[i + i0] && marks[i] < marksShifted[i + i0 + 1])
+            tmp[i] = (marks[i] + marksShifted[i + i0] + marksShifted[i + i0 + 1]) / 3;
+    }
+    if (i0 == -1) {
+        // smooth first item
+        tmp[0] = (tmp[0] + tmp[1] - (tmp[2] - tmp[1])) / 2;
+    }
+    if (tmp.length - 1 + i0 < marksShifted.length - 1) {
+        // smooth last item
+        tmp[$ - 1] = (tmp[$ - 1] + tmp[$ - 2] + (tmp[$ - 2] - tmp[$ - 3])) / 2;
+    }
+    return tmp;
+}
+
+// generate several periods sin table multiplied by blackman window, with phase 0 at middle point
+float[] generateSyncSinTable(int len, int periods) {
+    float[] singlePeriod = generateSinTable(len);
+    float[] full;
+    for (int i = 0; i < periods; i++)
+        full ~= singlePeriod;
+    float[] window = blackmanWindow(len * periods);
+    double s = 0;
+    for(int i = 0; i < full.length; i++) {
+        full[i] = full[i] * window[i];
+        s += full[i];
+    }
+    s /= full.length;
+    for(int i = 0; i < full.length; i++) {
+        full[i] -= s;
+    }
+    return full;
+}
+
+// generate several periods sin table multiplied by blackman window, with phase 0 at middle point
+float[] generateSyncCosTable(int len, int periods) {
+    float[] singlePeriod = generateCosTable(len);
+    float[] full;
+    for (int i = 0; i < periods; i++)
+        full ~= singlePeriod;
+    float[] window = blackmanWindow(len * periods);
+    double s = 0;
+    for(int i = 0; i < full.length; i++) {
+        full[i] = full[i] * window[i];
+        s += full[i];
+    }
+    s /= full.length;
+    for(int i = 0; i < full.length; i++) {
+        full[i] -= s;
+    }
+    return full;
+}
+
 // generate sin table with phase 0 at middle point
 float[] generateSinTable(int len) {
     float[] res = new float[len];
@@ -832,8 +953,12 @@ float[] generateCosTable(int len) {
 
 __gshared float[] SIN_TABLE_256;
 __gshared float[] COS_TABLE_256;
+__gshared float[] SIN_SYNC_TABLE_768;
+__gshared float[] COS_SYNC_TABLE_768;
 
 __gshared static this() {
     SIN_TABLE_256 = generateSinTable(256);
     COS_TABLE_256 = generateCosTable(256);
+    SIN_SYNC_TABLE_768 = generateSyncSinTable(256, 3);
+    COS_SYNC_TABLE_768 = generateSyncCosTable(256, 3);
 }
