@@ -283,7 +283,16 @@ class WaveFile {
         float error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
         lspToLpc(period.lsp[0..$], period.lpc[0..$]);
-        Log.d("LPC256: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
+        Log.d("LPC256: ", period.lpc, "   error=", error, "\n lsp=", period.lsp[0..$]);
+/*
+        getSamplesInterpolated(periodCenter, periodTime / 200, samples);
+        for(int i = 0; i < samples.length; i++) {
+            samples[i] *= window[i];
+        }
+        error = calcLPC(samples, period.lpc[0..$]);
+        lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
+        lspToLpc(period.lsp[0..$], period.lpc[0..$]);
+        Log.d("   200: ", period.lpc, "   error=", error, "\n lsp=", period.lsp[0..$]);
 
         getSamplesInterpolated(periodCenter, periodTime / 128, samples);
         for(int i = 0; i < samples.length; i++) {
@@ -292,7 +301,7 @@ class WaveFile {
         error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
         lspToLpc(period.lsp[0..$], period.lpc[0..$]);
-        Log.d("LPC128: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
+        Log.d("   128: ", period.lpc, "   error=", error, "\n lsp=", period.lsp[0..$]);
 
         getSamplesInterpolated(periodCenter, periodTime / 64, samples);
         for(int i = 0; i < samples.length; i++) {
@@ -301,7 +310,9 @@ class WaveFile {
         error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
         lspToLpc(period.lsp[0..$], period.lpc[0..$]);
-        Log.d("LPC064: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
+        Log.d("   064: ", period.lpc, "   error=", error, "\n lsp=", period.lsp[0..$]);
+
+*/
     }
 
     void smoothMarks() {
