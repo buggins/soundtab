@@ -787,14 +787,14 @@ class LoopWaveWidget : WaveFileWidget {
             h += 32;
         }
         if (_hasFft)
-            h += 256;
+            h += 8 * LPC_SIZE;
         return h;
     }
     /// override to allow extra views
     override void layoutExtraViews(Rect rc) {
         _fftRect = rc;
         if (_hasFft) {
-            _fftRect.top = rc.bottom - 256;
+            _fftRect.top = rc.bottom - 8 * LPC_SIZE;
             rc.bottom = _fftRect.top;
         } else {
             _fftRect.bottom = _fftRect.top;
@@ -847,15 +847,17 @@ class LoopWaveWidget : WaveFileWidget {
 
     protected void drawLsp(DrawBuf buf, ref PeriodInfo period, Rect rc) {
         import std.math: PI;
-        for (int i = 0; i < LPC_SIZE; i++) {
+        for (int i = 1; i < LPC_SIZE; i++) {
             Rect rect = rc;
-            rect.top += i * 10;
-            rect.bottom = rect.top + 10;
-            float middle = (i + 1.0f) - PI / (LPC_SIZE + 1);
-            float amp = middle / (period.lsp[i] / PI); // range is 0..1
-            if (amp < 0)
-                amp = -amp;
-            uint iamp = cast(int)(amp * 50);
+            rect.top += i * 8;
+            rect.bottom = rect.top + 8;
+
+            //float middle = (i + 1.0f) - PI / (LPC_SIZE + 1);
+            //float amp = middle / (period.lsp[i] / PI); // range is 0..1
+            //if (amp < 0)
+            //    amp = -amp;
+            float amp = period.lsp[i] - period.lsp[i - 1];
+            uint iamp = cast(int)(amp * 150);
             uint ampcolor = (iamp << 16) | (iamp << 8)| (iamp);
             buf.fillRect(rect, ampcolor);
         }
