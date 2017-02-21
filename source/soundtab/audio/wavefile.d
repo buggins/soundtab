@@ -282,9 +282,8 @@ class WaveFile {
         }
         float error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
-        float[LPC_SIZE] lpc2;
-        lsp_to_lpc(period.lsp.ptr, lpc2.ptr, LPC_SIZE);
-        Log.d("LPC256: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$], " lpc2=", lpc2);
+        lspToLpc(period.lsp[0..$], period.lpc[0..$]);
+        Log.d("LPC256: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
 
         getSamplesInterpolated(periodCenter, periodTime / 128, samples);
         for(int i = 0; i < samples.length; i++) {
@@ -292,6 +291,7 @@ class WaveFile {
         }
         error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
+        lspToLpc(period.lsp[0..$], period.lpc[0..$]);
         Log.d("LPC128: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
 
         getSamplesInterpolated(periodCenter, periodTime / 64, samples);
@@ -300,6 +300,7 @@ class WaveFile {
         }
         error = calcLPC(samples, period.lpc[0..$]);
         lpcToLsp(period.lpc[0..$], period.lsp[0..$]);
+        lspToLpc(period.lsp[0..$], period.lpc[0..$]);
         Log.d("LPC064: ", period.lpc, "   error=", error, "  lsp=", period.lsp[0..$]);
     }
 
@@ -1273,25 +1274,6 @@ __gshared static this() {
 }
 
 
-float chebPolyEval(float[] coef, float x)
-{
-    int m = cast(int)coef.length - 1;
-    int k;
-    float b0, b1, tmp;
-
-    /* Initial conditions */
-    b0=0; /* b_(m+1) */
-    b1=0; /* b_(m+2) */
-    x*=2;
-    /* Calculate the b_(k) */
-    for (k=m;k>0;k--) {
-        tmp = b0;                           /* tmp holds the previous value of b0 */
-        b0 = x*b0-b1+coef[m-k];    /* b0 holds its new value based on b0 and b1 */
-        b1 = tmp;                           /* b1 holds the previous value of b0 */
-    }
-    return (-b1 + 0.5f * x * b0 + coef[m]);
-}
-
 immutable float LPC_SCALING  = 1.0f;
 immutable float FREQ_SCALE = 1.0f;
 //#define X2ANGLE(x) (acos(x))
@@ -1304,26 +1286,45 @@ float X2ANGLE(float x) {
     return acos(x); 
 }
 
+float cheb_poly_eva(float *coef, float x, int m)
+{
+    int k;
+    float b0, b1, tmp;
+
+    /* Initial conditions */
+    b0=0; /* b_(m+1) */
+    b1=0; /* b_(m+2) */
+    x*=2;
+    /* Calculate the b_(k) */
+    for (k=m;k>0;k--) {
+        tmp=b0;                           /* tmp holds the previous value of b0 */
+        b0=x*b0-b1+coef[m-k];    /* b0 holds its new value based on b0 and b1 */
+        b1=tmp;                           /* b1 holds the previous value of b0 */
+    }
+    return(-b1 + 0.5f * x*b0+coef[m]);
+}
+
+
 /*  float *a                    lpc coefficients                        */
 /*  int lpcrdr                  order of LPC coefficients (10)          */
 /*  float *freq                 LSP frequencies in the x domain         */
 /*  int nb                      number of sub-intervals (4)             */
 /*  float delta                 grid spacing interval (0.02)            */
-int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
+int lpc_to_lsp (const float *a, int lpcrdr, float *freq, int nb, float delta)
 {
     import std.math : fabs;
     float temp_xr,xl,xr,xm=0;
     float psuml,psumr,psumm,temp_psumr /*,temp_qsumr*/;
     int i,j,m,flag,k;
-    float[] Q;                   /* ptrs for memory allocation           */
-    float[] P;
-    float * Q16;         /* ptrs for memory allocation           */
-    float * P16;
-    float * px;                   /* ptrs of respective P'(z) & Q'(z)     */
-    float * qx;
-    float * p;
-    float * q;
-    float * pt;                   /* ptr used for cheb_poly_eval()
+    float[64] Q;                   /* ptrs for memory allocation           */
+    float[64] P;
+    float *Q16 = null;         /* ptrs for memory allocation           */
+    float *P16 = null;
+    float *px;                   /* ptrs of respective P'(z) & Q'(z)     */
+    float *qx;
+    float *p;
+    float *q;
+    float *pt;                   /* ptr used for cheb_poly_eval()
     whether P' or Q'                        */
     int roots=0;                /* DR 8/2/94: number of roots found     */
     flag = 1;                   /*  program is searching for a root when,
@@ -1331,10 +1332,10 @@ int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
     m = lpcrdr/2;               /* order of P'(z) & Q'(z) polynomials   */
 
     /* Allocate memory space for polynomials */
-    Q.length = m + 1;
     Q[0..$] = 0;
-    P.length = m + 1;
-    Q[0..$] = 0;
+    P[0..$] = 0;
+    //Q = (FLOAT_DMEM*) calloc(1,sizeof(FLOAT_DMEM)*(m+1));
+    //P = (FLOAT_DMEM*) calloc(1,sizeof(FLOAT_DMEM)*(m+1));
 
     /* determine P'(z)'s and Q'(z)'s coefficients where
     P'(z) = P(z)/(1 + z^(-1)) and Q'(z) = Q(z)/(1-z^(-1)) */
@@ -1347,8 +1348,8 @@ int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
     *px++ = LPC_SCALING;
     *qx++ = LPC_SCALING;
     for(i=0;i<m;i++) {
-        *px++ = (a[i] + a[lpcrdr-1-i]) - *p++;
-        *qx++ = (a[i] - a[lpcrdr-1-i]) + *q++;
+        *px++ = (a[i]+a[lpcrdr-1-i]) - *p++;
+        *qx++ = (a[i]-a[lpcrdr-1-i]) + *q++;
     }
     px = P.ptr;
     qx = Q.ptr;
@@ -1378,18 +1379,18 @@ int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
         else
             pt = P16;
 
-        psuml = chebPolyEval(pt[0..m],xl);   /* evals poly. at xl    */
+        psuml = cheb_poly_eva(pt,xl,m);   /* evals poly. at xl    */
         flag = 1;
         while(flag && (xr >= -FREQ_SCALE)){
             float dd;
             /* Modified by JMV to provide smaller steps around x=+-1 */
 
-            dd=delta*(1.0f - 0.9f * xl*xl);
+            dd=delta*(1.0f - 0.9f *xl*xl);
             if (fabs(psuml)<.2)
                 dd *= 0.5f;
 
             xr = xl - dd;                          /* interval spacing     */
-            psumr = chebPolyEval(pt[0..m],xr);/* poly(xl-delta_x)    */
+            psumr = cheb_poly_eva(pt,xr,m);/* poly(xl-delta_x)    */
             temp_psumr = psumr;
             temp_xr = xr;
 
@@ -1402,14 +1403,14 @@ int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
             between xm and xr else set interval between xl and xr and repeat till
             root is located within the specified limits                         */
 
-            if(psumr * psuml < 0)// SIGN_CHANGE(psumr,psuml)
+            if(SIGN_CHANGE(psumr,psuml))
             {
                 roots++;
 
                 psumm=psuml;
-                for(k=0; k <= nb; k++) {
-                    xm = 0.5f * (xl+xr);            /* bisect the interval  */
-                    psumm = chebPolyEval(pt[0 .. m], xm);
+                for(k=0;k<=nb;k++){
+                    xm = 0.5f*(xl+xr);            /* bisect the interval  */
+                    psumm=cheb_poly_eva(pt,xm,m);
                     /*if(psumm*psuml>0.)*/
                     if(!SIGN_CHANGE(psumm,psuml))
                     {
@@ -1438,23 +1439,23 @@ int lpc_to_lsp(float[] a, int lpcrdr, float[] freq, int nb, float delta)
 }
 
 
-int lpcToLsp(float[] src, float[] dst) // idxi=input field index
+int lpcToLsp(const float[] src, float[] dst) // idxi=input field index
 {
-    int Nsrc = cast(int)src.length;
-    int Ndst = cast(int)dst.length;
-    // (TODO:) check if Ndst >= Nsrc!
-    if (Ndst < Nsrc ) return 0;
+    return lpcToLsp(src.ptr, dst.ptr, cast(int)src.length, cast(int)dst.length);
+}
+
+int lpcToLsp(const float *src, float *dst, int Nsrc, int Ndst) // idxi=input field index
+{
+    int nLpc = Nsrc;
 
     /* LPC to LSPs (x-domain) transform */
     int roots;
-    int nLpc = cast(int)src.length;
-    int nLsp = 4; //10; //cast(int)dst.length; // 10
-    roots = lpc_to_lsp(src, nLpc, dst, nLsp, LSP_DELTA1);
+    roots = lpc_to_lsp (src, nLpc, dst, 10, LSP_DELTA1);
     if (roots!=nLpc) {
-        roots = lpc_to_lsp(src, nLpc, dst, nLsp, LSP_DELTA2);  // nLpc was Nsrc
+        roots = lpc_to_lsp (src, nLpc, dst, 10, LSP_DELTA2);  // nLpc was Nsrc
         if (roots!=nLpc) {
             int i;
-            for (i=roots;i<nLpc;i++) {
+            for (i=roots; i<nLpc; i++) {
                 dst[i]=0.0;
             }
         }
@@ -1470,6 +1471,11 @@ int lpcToLsp(float[] src, float[] dst) // idxi=input field index
 float ANGLE2X(float a) { 
     import std.math;
     return (cos(a));
+}
+
+void lspToLpc(const float[] src, float[] dst) {
+    int lpcrdr = cast(int)src.length;
+    lsp_to_lpc(src.ptr, dst.ptr, lpcrdr);
 }
 
 void lsp_to_lpc(const float *freq, float *ak, int lpcrdr)
@@ -1530,4 +1536,94 @@ void lsp_to_lpc(const float *freq, float *ak, int lpcrdr)
         xin2 = 0.0;
     }
 
+}
+
+
+/* Autocorrelation in the time domain (for ACF LPC method) */
+/* x is signal to correlate, n is number of samples in input buffer, 
+*outp is array to hold #lag output coefficients, lag is # of output coefficients (= max. lag) */
+void smileDsp_autoCorr(const float *x, const int n, float *outp, int lag)
+{
+    int i;
+    while (lag) {
+        outp[--lag] = 0.0;
+        for (i=lag; i < n; i++) {
+            outp[lag] += x[i] * x[i - lag];
+        }
+    }
+}
+
+/* LPC analysis via acf (=implementation of Durbin recursion)*/
+int smileDsp_calcLpcAcf(float * r, float *a, int p, float *gain, float *k)
+{
+    int i, m = 0;
+    float e;
+    int errF = 1;
+    float k_m;
+    float[64] al;
+
+    if (!a) return 0;
+    if (!r) return 0;
+
+    if ((r[0] == 0.0) || (r[0] == -0.0)) {
+        for (i=0; i < p; i++) {
+            a[i] = 0.0;
+        }
+        return 0;
+    }
+
+    //al = (FLOAT_DMEM*)malloc(sizeof(FLOAT_DMEM)*(p));
+
+    // Initialisation, Gl. 158
+    e = r[0];
+    if (e==0.0) {
+        for (i=0; i<=p; i++) {
+            a[i] = 0.0;
+            if (k)
+                k[m] = 0.0;
+        }
+    } else {
+        // Iterations: m = 1... p, Gl. 159
+        for (m=1; m<=p; m++) {
+            // Gl. 159 (a) 
+            float sum = 1.0f * r[m];
+            for (i=1; i<m; i++) {
+                sum += a[i-1] * r[m-i];
+            }
+            k_m = (-1.0f / e ) * sum;
+            // copy refl. coeff.
+            if (k) k[m-1] = k_m;
+            // Gl. 159 (b)
+            a[m-1] = k_m;
+            for (i=1; i<=m/2; i++) {
+                float x = a[i-1];
+                a[i-1] += k_m * a[m-i-1];
+                if ((i < (m/2))||((m&1)==1)) a[m-i-1] += k_m * x;
+            }
+            // update error
+            e *= (1.0f - k_m*k_m);
+            if (e==0.0) {
+                for (i=m; i<=p; i++) {
+                    a[i] = 0.0;
+                    if (k) k[m] = 0.0;
+                }
+                break;
+            }
+        }
+    }
+
+    if (gain)
+        *gain=e;
+    return 1;
+}
+
+// return value: gain
+float calcLpc(const float *x, int Nsrc, float * lpc, int nCoeff, float *refl)
+{
+    float gain = 0.0;
+    float[64] acf;
+    //if (acf == NULL) acf = (FLOAT_DMEM *)malloc(sizeof(FLOAT_DMEM)*(nCoeff+1));
+    smileDsp_autoCorr(x, Nsrc, acf.ptr, nCoeff + 1);
+    smileDsp_calcLpcAcf(acf.ptr, lpc, nCoeff, &gain, refl);
+    return gain;
 }
