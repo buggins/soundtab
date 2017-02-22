@@ -777,6 +777,8 @@ class LoopWaveWidget : WaveFileWidget {
         }
     }
 
+    immutable int LPC_HEIGHT = 12 * LPC_SIZE;
+
     /// override to allow extra views
     override int getExtraViewsHeight(int parentHeight) {
         int h = 0;
@@ -787,14 +789,14 @@ class LoopWaveWidget : WaveFileWidget {
             h += 32;
         }
         if (_hasFft)
-            h += 10 * LPC_SIZE;
+            h += LPC_HEIGHT;
         return h;
     }
     /// override to allow extra views
     override void layoutExtraViews(Rect rc) {
         _fftRect = rc;
         if (_hasFft) {
-            _fftRect.top = rc.bottom - 10 * LPC_SIZE;
+            _fftRect.top = rc.bottom - LPC_HEIGHT;
             rc.bottom = _fftRect.top;
         } else {
             _fftRect.bottom = _fftRect.top;

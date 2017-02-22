@@ -175,7 +175,7 @@ class SoundFrame : AppFrame {
 
     void openInstrumentEditor() {
         import soundtab.ui.instredit;
-        InstrumentEditorDialog dlg = new InstrumentEditorDialog(this.window, _synth.mixer, 800, 600);
+        InstrumentEditorDialog dlg = new InstrumentEditorDialog(this.window, _synth.mixer, 900, 800);
         dlg.show();
     }
 

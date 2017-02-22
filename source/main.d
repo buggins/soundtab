@@ -95,7 +95,7 @@ extern (C) int UIAppMain(string[] args) {
     // create window
     Log.d("Creating window");
     import dlangui.platforms.windows.winapp;
-    Win32Window window = cast(Win32Window)Platform.instance.createWindow("SoundTab - Wacom Tablet Theremin", null, WindowFlag.Resizable, 800, 600);
+    Win32Window window = cast(Win32Window)Platform.instance.createWindow("SoundTab - Wacom Tablet Theremin", null, WindowFlag.Resizable, 800, 700);
     Log.d("Window created");
     import soundtab.ui.noteutil;
     buildNoteConversionTable();
