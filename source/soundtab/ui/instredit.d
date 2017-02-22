@@ -1029,7 +1029,7 @@ class InstrEditorBody : VerticalLayout {
                     selWave.generateFrequenciesFromMarks();
                     selWave.normalizeAmplitude;
                     selWave.fillPeriodsFromMarks();
-                    for (int i = 0; i < 20; i++)
+                    for (int i = 0; i < 5; i++)
                         selWave.smoothLSP();
 
                     //if (zeroPhasePositionsNormal.length > 1) {
@@ -1039,8 +1039,8 @@ class InstrEditorBody : VerticalLayout {
                     //_loop.file = lowpass;
                     //_loop.file = highpass;
                     tmp.excitation = null;
-                    _loop.file = tmp;
-                    //_loop.file = selWave;
+                    //_loop.file = tmp;
+                    _loop.file = selWave;
                 }
                 return true;
             default:
