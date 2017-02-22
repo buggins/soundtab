@@ -36,6 +36,9 @@ class WaveFile {
     float[] frequencies; // multipliers relative to middle frequency, to get real frequency, use frequency[i]*middleFrequency
     float minFrequencyK = 0;
     float maxFrequencyK = 0;
+    float[LPC_SIZE] lpc;
+    float[LPC_SIZE] lsp;
+    float[] excitation;
 
     this() {
     }
@@ -80,6 +83,66 @@ class WaveFile {
                 fillPeriodInfo(periods[i], marks[i], marks[i + 1]);
             }
         }
+        if (marks.length > 3) {
+            // LSPs on edges are calculated inaccurate - copy from inner frames
+            periods[0].lpc[0..$] = periods[1].lpc[0..$];
+            periods[0].lsp[0..$] = periods[1].lsp[0..$];
+            periods[$-1].lpc[0..$] = periods[$-2].lpc[0..$];
+            periods[$-1].lsp[0..$] = periods[$-2].lsp[0..$];
+        }
+        // calc avg lsp/lpc
+        int startIndex = cast(int)(periods.length / 3);
+        int endIndex = cast(int)(periods.length * 2 / 3);
+        lsp[0..$] = 0;
+        for (int i = startIndex; i < endIndex; i++) {
+            for (int j = 0; j < LPC_SIZE; j++) {
+                lsp[j] += periods[i].lsp[j];
+            }
+        }
+        for (int j = 0; j < LPC_SIZE; j++) {
+            lsp[j] /= endIndex - startIndex;
+        }
+        lspToLpc(lsp, lpc);
+        calcExcitation();
+    }
+
+    void calcExcitation() {
+        import dlangui.core.logger;
+        excitation.length = data.length;
+        // inverse filtering
+        float dataEnergy = 0;
+        float excitationEnergy = 0;
+        for (int i = 0; i < data.length; i++) {
+            float predicted = 0;
+            for (int j = 0; j < LPC_SIZE; j++) {
+                int index = i - j - 1;
+                float v = index >= 0 ? data[index] : 0;
+                predicted -= v * lpc[j];
+            }
+            //predicted = -predicted;
+            excitation[i] = data[i] - predicted;
+            dataEnergy += data[i] * data[i];
+            excitationEnergy += excitation[i] * excitation[i];
+        }
+        dataEnergy /= frames;
+        excitationEnergy /= frames;
+        Log.d("Excitation: energy = ", excitationEnergy, ", data energy = ", dataEnergy);
+        float[] tmpReconstructed;
+        tmpReconstructed.length = excitation.length;
+        dataEnergy = 0;
+        for (int i = 0; i < data.length; i++) {
+            float predicted = 0;
+            for (int j = 0; j < LPC_SIZE; j++) {
+                int index = i - j - 1;
+                float v = index >= 0 ? tmpReconstructed[index] : 0;
+                predicted -= v * lpc[j];
+            }
+            //predicted = -predicted;
+            tmpReconstructed[i] = predicted + excitation[i];
+            dataEnergy += tmpReconstructed[i] * tmpReconstructed[i];
+        }
+        dataEnergy /= frames;
+        Log.d("Reconstructed data energy = ", dataEnergy);
     }
 
     immutable bool sqEnergy = true;
@@ -274,10 +337,10 @@ class WaveFile {
 
         float periodCenter = period.middleTime * sampleRate; // center frame
         float periodTime = period.periodTime * sampleRate; // period frames
-        int windowSize = cast(int)(3 * periodTime / 4);
+        int windowSize = cast(int)(5 * periodTime);
         float[] samples = new float[windowSize];
         float[] window = blackmanWindow(windowSize);
-        getSamplesInterpolated(cast(int)periodCenter, 4, samples);
+        getSamplesInterpolated(cast(int)periodCenter, 1, samples);
         for(int i = 0; i < samples.length; i++) {
             samples[i] *= window[i];
         }
@@ -485,16 +548,23 @@ class WaveFile {
         }
     }
 
-    WaveFile getRange(int start, int end) {
+    WaveFile getRange(int start, int end, bool forceMono = false) {
         int len = end - start;
         if (len <= 0 || start < 0 || end > frames)
             return null;
         WaveFile res = new WaveFile();
-        res.channels = channels;
+        res.channels = forceMono ? 1 : channels;
         res.sampleRate = sampleRate;
         res.frames = len;
-        res.data = new float[len * channels];
-        res.data[0..$] = data[start * channels .. (start + len) * channels];
+        res.data = new float[len * res.channels];
+        if (res.channels == channels)
+            res.data[0..$] = data[start * channels .. (start + len) * channels];
+        else {
+            // copy only one channel
+            for (int i = 0; i < res.frames; i++) {
+                res.data[i] = data[start * channels + i * channels];
+            }
+        }
         return res;
     }
 

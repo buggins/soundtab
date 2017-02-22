@@ -173,6 +173,13 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
     }
     @property Mp3Player player() { return _player; }
 
+    /// get data to display - override to show some other data than wave (e.g. to show excitation)
+    float[] getDisplayData() {
+        if (!_file)
+            return null;
+        return _file.data;
+    }
+
     /// override to allow extra views
     int getExtraViewsHeight(int parentHeight) { return 0; }
     /// override to allow extra views
@@ -373,6 +380,14 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
         return null;
     }
 
+    WaveFile getSelectionWave() {
+        int sellen = _selEnd - _selStart;
+        if (sellen > 16) {
+            return _file.getRange(_selStart, _selEnd, true);
+        }
+        return null;
+    }
+
     void ensureCursorVisible() {
         if (!_file)
             return;
@@ -537,9 +552,10 @@ class WaveFileWidget : WidgetGroupDefaultDrawing {
             return res;
         int p0 = cast(int)((offset) * _hscale);
         int p1 = cast(int)((offset + 1) * _hscale);
+        float[] data = getDisplayData();
         for (int i = p0; i < p1; i++) {
             if (i >= 0 && i < _file.frames) {
-                float v = _file.data.ptr[i * _file.channels];
+                float v = data.ptr[i * _file.channels];
                 if (i == p0) {
                     res.minvalue = res.maxvalue = v;
                 } else {
@@ -743,6 +759,18 @@ class LoopWaveWidget : WaveFileWidget {
     this(Mixer mixer) {
         super(mixer);
     }
+
+    /// get data to display - override to show some other data than wave (e.g. to show excitation)
+    override float[] getDisplayData() {
+        if (!_file)
+            return null;
+        if (_file.excitation)
+            return _file.excitation;
+        return _file.data;
+    }
+
+
+
     @property override void file(WaveFile f) { 
         super.file(f);
         if (_file && _file.amplitudes.length == _file.frames) {
@@ -937,6 +965,7 @@ class InstrEditorBody : VerticalLayout {
         switch(a.id) {
             case Actions.InstrumentCreateLoop:
                 WaveFile tmp = _wave.getSelectionUpsampled();
+                WaveFile selWave = _wave.getSelectionWave();
                 if (tmp) {
                     float baseFrequency = tmp.calcBaseFrequency();
                     int lowpassFilterSize = tmp.timeToFrame((1/baseFrequency) / 16) | 1;
@@ -978,6 +1007,7 @@ class InstrEditorBody : VerticalLayout {
                     //highpass.smoothMarks();
                     //highpass.smoothMarks();
                     highpass.generateFrequenciesFromMarks();
+
                     tmp.marks = highpass.marks;
                     tmp.negativeMarks = highpass.negativeMarks;
                     tmp.frequencies = highpass.frequencies;
@@ -986,13 +1016,30 @@ class InstrEditorBody : VerticalLayout {
                     tmp.fillPeriodsFromMarks();
                     for (int i = 0; i < 20; i++)
                         tmp.smoothLSP();
+
+
+                    selWave.marks = highpass.marks;
+                    selWave.negativeMarks = highpass.negativeMarks;
+                    selWave.fillPeriodsFromMarks();
+                    selWave.fillAmplitudesFromPeriods();
+                    selWave.normalizeAmplitude();
+                    //highpass.correctMarksForNormalizedAmplitude();
+                    //highpass.smoothMarks();
+                    //highpass.smoothMarks();
+                    selWave.generateFrequenciesFromMarks();
+                    selWave.normalizeAmplitude;
+                    selWave.fillPeriodsFromMarks();
+                    for (int i = 0; i < 20; i++)
+                        selWave.smoothLSP();
+
                     //if (zeroPhasePositionsNormal.length > 1) {
                     //    tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
                     //    tmp.generateFrequenciesFromMarks();
                     //}
                     //_loop.file = lowpass;
                     //_loop.file = highpass;
-                    _loop.file = tmp;
+                    //_loop.file = tmp;
+                    _loop.file = selWave;
                 }
                 return true;
             default:
