@@ -584,7 +584,120 @@ class WaveFile {
         return resampled.getRange(dstart * 4, resampled.frames - dend * 4);
     }
 
+    // frequency domain z padding
     WaveFile upsample4x() {
+        import std.math : PI, sin;
+
+        float maxsrc = 0;
+        float maxdst = 0;
+        for (int i = 0; i < frames; i++)
+            if (maxsrc < data[i])
+                maxsrc = data[i];
+
+        WaveFile res = new WaveFile();
+        res.channels = 1;
+        res.sampleRate = sampleRate * 4;
+        res.frames = frames * 4;
+        res.data = new float[res.frames];
+        res.data[0..$] = 0;
+        // upsampling with zero stuffing
+        for (int i = 0; i < frames; i++) {
+            res.data[i * 4] = data[i] * 4;
+            res.data[i * 4 + 1] = 0;
+            res.data[i * 4 + 2] = 0;
+            res.data[i * 4 + 3] = 0;
+        }
+        // filtering
+        int windowSize = 31;
+        float sincN = 5.8f;
+        float[] window = blackmanWindow(windowSize);
+        float[] sinc = new float[windowSize];
+        for (int i = 0; i < windowSize; i++) {
+            float x = i - windowSize / 2;
+            x = x / sincN;
+            float v = i == windowSize / 2 ? 1 : sin(PI * x) / (PI * x);
+            sinc[i] = v * window[i];
+        }
+        normalizeFirFilter(sinc);
+        float[] tmp = res.data.dup;
+        applyFirFilter(tmp, res.data, sinc);
+
+
+        for (int i = 0; i < res.frames; i++)
+            if (maxdst < res.data[i])
+                maxdst = res.data[i];
+        import dlangui.core.logger;
+        Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
+
+        return res;
+    }
+
+    // frequency domain z padding
+    WaveFile upsample4xFreqDomainZpad() {
+        import std.numeric;
+        import std.complex;
+        immutable int BATCH_SIZE = 256;
+        immutable int overlap = BATCH_SIZE/4;
+        Fft fft = new Fft(BATCH_SIZE);
+        Fft ifft = new Fft(BATCH_SIZE * 4);
+        WaveFile res = new WaveFile();
+        res.channels = 1;
+        res.sampleRate = sampleRate * 4;
+        res.frames = frames * 4;
+        res.data = new float[res.frames];
+        res.data[0..$] = 0;
+        float[] srcBuf = new float[BATCH_SIZE];
+        Complex!double[] invBuf = new Complex!double[BATCH_SIZE];
+        Complex!double[] invBufResampled = new Complex!double[BATCH_SIZE * 4];
+        Complex!double[] fftFrame = new Complex!double[BATCH_SIZE * 4];
+
+        float maxsrc = 0;
+        float maxdst = 0;
+        for (int i = 0; i < frames; i++)
+            if (maxsrc < data[i])
+                maxsrc = data[i];
+        
+        for (int x = -overlap; x < frames; x += BATCH_SIZE - overlap * 2) {
+            getSamples(x, 0, srcBuf);
+            //immutable int SMOOTH_RANGE = BATCH_SIZE / 10;
+            //for (int i = 0; i < SMOOTH_RANGE; i++) {
+            //    float k = 1.0f - i / cast(float)SMOOTH_RANGE;
+            //    float s1 = srcBuf[i * 4];
+            //    float s2 = srcBuf[BATCH_SIZE - i * 4 - 4];
+            //    float sm = (s1 + s2) / 2;
+            //    srcBuf[i * 4] = s1 * (1 - k) + sm * k;
+            //    srcBuf[BATCH_SIZE - i * 4 - 4] = s2 * (1 - k) + sm * k;
+            //}
+            fft.fft(srcBuf, invBuf);
+            invBufResampled[0 .. $] = Complex!double(0,0);
+            for (int i = 0; i < BATCH_SIZE / 2; i++) {
+                invBufResampled[i] = invBuf[i];
+            }
+            for (int i = 0; i < BATCH_SIZE / 2 - 1; i++) {
+                invBufResampled[$ - i - 1] = invBuf[$ - i - 1];
+            }
+            invBufResampled[$ / 2] = invBuf[$ / 2];
+            ifft.inverseFft(invBufResampled, fftFrame);
+            for (int i = 0; i < BATCH_SIZE * 4 - overlap * 8; i++) {
+                int dstIndex = x * 4 + i + overlap * 4;
+                if (dstIndex >= 0 && dstIndex < res.frames)
+                    res.data.ptr[dstIndex] = fftFrame[i + overlap * 4].re * 4;
+            }
+        }
+
+        for (int i = 0; i < res.frames; i++)
+            if (maxdst < res.data[i])
+                maxdst = res.data[i];
+
+        import dlangui.core.logger;
+
+        Log.d("max value before upsampling: ", maxsrc, " after: ", maxdst);
+
+        return res;
+    }
+
+    // time domain z padding upsampling
+    WaveFile upsample4xTimeDomainZpad() {
         import std.numeric;
         import std.complex;
         immutable int BATCH_SIZE = 256;
@@ -606,7 +719,7 @@ class WaveFile {
         for (int i = 0; i < frames; i++)
             if (maxsrc < data[i])
                 maxsrc = data[i];
-        
+
         for (int x = -overlap / 4; x < frames; x += BATCH_SIZE / 4 - overlap / 2) {
             getSamplesZpad4(x, 0, srcBuf);
             //immutable int SMOOTH_RANGE = BATCH_SIZE / 10;
@@ -626,11 +739,11 @@ class WaveFile {
             /*
             immutable int SMOOTH_DIST = BATCH_SIZE / 30;
             for (int i = 1; i < SMOOTH_DIST; i++) {
-                float k = SMOOTH_DIST / i;
-                invBuf[BATCH_SIZE / 8 - i].re *= k;
-                invBuf[BATCH_SIZE / 8 - i].im *= k;
-                invBuf[BATCH_SIZE * 7 / 8 + i].re *= k;
-                invBuf[BATCH_SIZE * 7 / 8 + i].im *= k;
+            float k = SMOOTH_DIST / i;
+            invBuf[BATCH_SIZE / 8 - i].re *= k;
+            invBuf[BATCH_SIZE / 8 - i].im *= k;
+            invBuf[BATCH_SIZE * 7 / 8 + i].re *= k;
+            invBuf[BATCH_SIZE * 7 / 8 + i].im *= k;
             }
             */
             ifft.inverseFft(invBuf, fftFrame);

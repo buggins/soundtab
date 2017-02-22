@@ -1038,8 +1038,9 @@ class InstrEditorBody : VerticalLayout {
                     //}
                     //_loop.file = lowpass;
                     //_loop.file = highpass;
-                    //_loop.file = tmp;
-                    _loop.file = selWave;
+                    tmp.excitation = null;
+                    _loop.file = tmp;
+                    //_loop.file = selWave;
                 }
                 return true;
             default:
