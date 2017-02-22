@@ -274,9 +274,10 @@ class WaveFile {
 
         float periodCenter = period.middleTime * sampleRate; // center frame
         float periodTime = period.periodTime * sampleRate; // period frames
-        float[] samples = new float[768];
-        float[] window = blackmanWindow(768);
-        getSamplesInterpolated(periodCenter, periodTime / 256, samples);
+        int windowSize = cast(int)(3 * periodTime / 4);
+        float[] samples = new float[windowSize];
+        float[] window = blackmanWindow(windowSize);
+        getSamplesInterpolated(cast(int)periodCenter, 4, samples);
         for(int i = 0; i < samples.length; i++) {
             samples[i] *= window[i];
         }
@@ -313,6 +314,19 @@ class WaveFile {
         Log.d("   064: ", period.lpc, "   error=", error, "\n lsp=", period.lsp[0..$]);
 
 */
+    }
+
+    void smoothLSP() {
+        float[LPC_SIZE][] lsps;
+        lsps.length = periods.length;
+        for(int i = 0; i < periods.length; i++) {
+            lsps[i][0..$] = periods[i].lsp[0..$];
+        }
+        for(int i = 0; i < periods.length; i++) {
+            for (int j = 0; j < LPC_SIZE; j++)
+                periods[i].lsp[j] = (lsps[i][j] + lsps[i > 0 ? i - 1 : i][j] + lsps[i + 1 < periods.length ? i + 1 : i][j]) / 3;
+            lspToLpc(periods[i].lsp[0..$], periods[i].lpc[0..$]);
+        }
     }
 
     void smoothMarks() {
@@ -1553,7 +1567,7 @@ void lsp_to_lpc(const float *freq, float *ak, int lpcrdr)
 /* Autocorrelation in the time domain (for ACF LPC method) */
 /* x is signal to correlate, n is number of samples in input buffer, 
 *outp is array to hold #lag output coefficients, lag is # of output coefficients (= max. lag) */
-void smileDsp_autoCorr(const float *x, const int n, float *outp, int lag)
+void autoCorr(const float *x, const int n, float *outp, int lag)
 {
     int i;
     while (lag) {
@@ -1565,7 +1579,7 @@ void smileDsp_autoCorr(const float *x, const int n, float *outp, int lag)
 }
 
 /* LPC analysis via acf (=implementation of Durbin recursion)*/
-int smileDsp_calcLpcAcf(float * r, float *a, int p, float *gain, float *k)
+int calcLpcAcf(float * r, float *a, int p, float *gain, float *k)
 {
     int i, m = 0;
     float e;
@@ -1634,7 +1648,7 @@ float calcLpc(const float *x, int Nsrc, float * lpc, int nCoeff, float *refl)
     float gain = 0.0;
     float[64] acf;
     //if (acf == NULL) acf = (FLOAT_DMEM *)malloc(sizeof(FLOAT_DMEM)*(nCoeff+1));
-    smileDsp_autoCorr(x, Nsrc, acf.ptr, nCoeff + 1);
-    smileDsp_calcLpcAcf(acf.ptr, lpc, nCoeff, &gain, refl);
+    autoCorr(x, Nsrc, acf.ptr, nCoeff + 1);
+    calcLpcAcf(acf.ptr, lpc, nCoeff, &gain, refl);
     return gain;
 }

@@ -787,14 +787,14 @@ class LoopWaveWidget : WaveFileWidget {
             h += 32;
         }
         if (_hasFft)
-            h += 8 * LPC_SIZE;
+            h += 10 * LPC_SIZE;
         return h;
     }
     /// override to allow extra views
     override void layoutExtraViews(Rect rc) {
         _fftRect = rc;
         if (_hasFft) {
-            _fftRect.top = rc.bottom - 8 * LPC_SIZE;
+            _fftRect.top = rc.bottom - 10 * LPC_SIZE;
             rc.bottom = _fftRect.top;
         } else {
             _fftRect.bottom = _fftRect.top;
@@ -845,22 +845,41 @@ class LoopWaveWidget : WaveFileWidget {
         }
     }
 
-    protected void drawLsp(DrawBuf buf, ref PeriodInfo period, Rect rc) {
+    protected void drawLspPart(DrawBuf buf, float[] lsp, Rect rc) {
         import std.math: PI;
-        for (int i = 1; i < LPC_SIZE; i++) {
+        for (int i = 0; i < lsp.length; i++) {
             Rect rect = rc;
-            rect.top += i * 8;
-            rect.bottom = rect.top + 8;
-
-            //float middle = (i + 1.0f) - PI / (LPC_SIZE + 1);
-            //float amp = middle / (period.lsp[i] / PI); // range is 0..1
-            //if (amp < 0)
-            //    amp = -amp;
-            float amp = period.lsp[i] - period.lsp[i - 1];
-            uint iamp = cast(int)(amp * 150);
+            float value = rc.height * lsp[i] / PI;
+            int y = rc.top + cast(int)value;
+            int delta = cast(int)((value - cast(int)value) * 256);
+            rect.top = y;
+            rect.bottom = y + 1;
+            uint iamp = 255 - delta;
             uint ampcolor = (iamp << 16) | (iamp << 8)| (iamp);
             buf.fillRect(rect, ampcolor);
+            rect.top++;
+            rect.bottom++;
+            iamp = delta;
+            ampcolor = (iamp << 16) | (iamp << 8)| (iamp);
+            buf.fillRect(rect, ampcolor);
         }
+    }
+
+    protected void drawLsp(DrawBuf buf, PeriodInfo[] periods, int periodIndex, Rect rc) {
+        Rect rect = rc;
+        float[LPC_SIZE] lsp;
+        float[LPC_SIZE] prevLsp;
+        float[LPC_SIZE] nextLsp;
+        lsp[0..$] = periods[periodIndex].lsp[0..$];
+        prevLsp[0..$] = periods[periodIndex > 0 ? periodIndex - 1 : 0].lsp[0..$];
+        nextLsp[0..$] = periods[periodIndex + 1 < periods.length ? periodIndex + 1 : periodIndex].lsp[0..$];
+        for (int i = 0; i < LPC_SIZE; i++) {
+            prevLsp[i] = (prevLsp[i] + 2*lsp[i]) / 3;
+            nextLsp[i] = (nextLsp[i] + 2*lsp[i]) / 3;
+        }
+        drawLspPart(buf, prevLsp, Rect(rc.left, rc.top, rc.left + rc.width / 3, rc.bottom));
+        drawLspPart(buf, lsp, Rect(rc.left + rc.width/3, rc.top, rc.left + rc.width * 2 / 3, rc.bottom));
+        drawLspPart(buf, nextLsp, Rect(rc.left + rc.width*2/3, rc.top, rc.right, rc.bottom));
     }
 
     /// override to allow extra views
@@ -874,17 +893,18 @@ class LoopWaveWidget : WaveFileWidget {
         if (_hasFft) {
             auto saver = ClipRectSaver(buf, _fftRect, alpha);
             buf.fillRect(_fftRect, 0x100000);
-            foreach(period; _file.periods) {
-                int startFrame = _file.timeToFrame(period.startTime);
-                int endFrame = _file.timeToFrame(period.endTime);
+            for(int index = 0; index < _file.periods.length; index++) {
+                int startFrame = _file.timeToFrame(_file.periods[index].startTime);
+                int endFrame = _file.timeToFrame(_file.periods[index].endTime);
                 int startx = startFrame / _hscale - _scrollPos + _fftRect.left;
                 int endx = endFrame / _hscale - _scrollPos + _fftRect.left;
                 if (startx < _fftRect.right && endx > _fftRect.left) {
                     // frame is visible
-                    drawLsp(buf, period, Rect(startx, _fftRect.top, endx, _fftRect.bottom));
+                    drawLsp(buf, _file.periods, index, Rect(startx, _fftRect.top, endx, _fftRect.bottom));
                     //drawFft(buf, period, Rect(startx, _fftRect.top, endx, _fftRect.bottom));
                 }
             }
+            font.drawText(buf, _fftRect.left + 2, _fftRect.top + 2, "LSP", 0x20FFFF80);
         }
     }
 
@@ -962,6 +982,8 @@ class InstrEditorBody : VerticalLayout {
                     tmp.amplitudes = highpass.amplitudes;
                     tmp.normalizeAmplitude;
                     tmp.fillPeriodsFromMarks();
+                    for (int i = 0; i < 20; i++)
+                        tmp.smoothLSP();
                     //if (zeroPhasePositionsNormal.length > 1) {
                     //    tmp.removeDcOffset(zeroPhasePositionsHighpass[0], zeroPhasePositionsHighpass[$-1]);
                     //    tmp.generateFrequenciesFromMarks();
